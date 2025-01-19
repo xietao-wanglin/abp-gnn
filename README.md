@@ -1,2 +1,3 @@
-# abp-gnn
-Simulation of Active Brownian Particles with Graph Neural Networks
+# Simulation of Active Brownian Particles with Graph Neural Networks
+
+Work-in-progress
