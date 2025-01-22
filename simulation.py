@@ -73,7 +73,7 @@ class Simulation:
     
     def solve_dynamics(self, method: Optional[str] = 'RK45'):
 
-        for i, t in enumerate(tqdm(self.times[:-1])):
+        for i, t in enumerate(tqdm(self.times[:-1], leave=False)):
             sol = solve_ivp(self.particle_system, 
                             t_span=(t, t+self.dt), 
                             y0=self.positions[i].T.reshape(3*self.N),
@@ -86,7 +86,7 @@ class Simulation:
     def get_solution(self):
         return self.times, self.positions
     
-    def create_animation(self):
+    def create_animation(self, filename: Optional[str] = None):
         times, positions = self.get_solution()
         f = plt.figure(figsize=(6, 5))
         ax = f.add_subplot(111)
@@ -105,4 +105,6 @@ class Simulation:
             f.canvas.draw_idle()
 
         animation = FuncAnimation(f, update, interval=50, frames=100)
+        if filename is not None:
+            animation.save(f'./videos/{filename}', writer='ffmpeg', fps=20)
         plt.show()
