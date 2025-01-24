@@ -10,6 +10,7 @@ import numpy as np
 from tqdm import tqdm
 
 import os
+import json
 from glob import glob
 from typing import Optional, List, Dict
 
@@ -22,7 +23,8 @@ def train(model: nn.Module,
           lr: Optional[float] = 5e-4, 
           device: Optional[str | torch.device] = 'cpu',
           checkpoint_dir: Optional[str] = 'checkpoints',
-          checkpoint_every: Optional[int] = 10) -> Dict:
+          checkpoint_every: Optional[int] = 10,
+          hist_filename: Optional[str]= 'training_history') -> Dict:
     """
     Train the GNN model.
     
@@ -162,6 +164,16 @@ def train(model: nn.Module,
         print(f'Train Loss: {avg_train_loss:.6f}')
         print(f'Val Loss: {avg_val_loss:.6f}')
         print('-' * 30)
+    
+    history_path = os.path.join(checkpoint_dir, f'{hist_filename}.json')
+    with open(history_path, 'w') as f:
+        json.dump({
+            'train_loss': history['train_loss'],
+            'val_loss': history['val_loss'],
+            'best_val_loss': history['best_val_loss']
+        }, f, indent=4)
+    
+    print(f'Training history saved to {history_path}')
     
     return history
 
