@@ -4,75 +4,87 @@ from utilities import prepare_graph_data, process_simulation_data, ParticleDatas
 import torch
 import torch.nn as nn
 import torch.optim as optim
-from torch.utils.data import DataLoader, random_split
+from torch.utils.data import DataLoader
 
 import numpy as np
 from tqdm import tqdm
+
+import os
 from glob import glob
+from typing import Optional, List, Dict
 
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
-def train(model, simulation_list, 
-              n_epochs=100, 
-              lr=1e-3, 
-              device='cpu',
-              val_split=0.1):
+def train(model: nn.Module, 
+          train_simulation_list: List, 
+          test_simulation_list: List,
+          n_epochs: Optional[int] = 100, 
+          lr: Optional[float] = 5e-4, 
+          device: Optional[str | torch.device] = 'cpu',
+          checkpoint_dir: Optional[str] = 'checkpoints',
+          checkpoint_every: Optional[int] = 10) -> Dict:
     """
-    Train the GNN model on particle simulation data with variable N.
+    Train the GNN model.
     
-    Args:
-        model: GNN model instance
-        simulation_list: List of simulation arrays (timesteps, 3, N)
-        n_epochs: Number of epochs to train
-        lr: Learning rate
-        device: torch device
-        val_split: Fraction of data to use for validation
+    Parameters
+    ----------
+    model: nn.Module
+        GNN model instance.
+    train_simulation_list: List
+        List of train simulation arrays.
+    test_simulation_list: List
+        List of test simulation arrays.
+    n_epochs: int, optional
+        Number of epochs to train, default is 100.
+    lr: float, optional
+        Learning rate of Adam optimiser, default is 5e-4.
+    device: str, optional
+        Either 'cpu', 'cuda' or torch.device instance, default is 'cpu'.
+    checkpoint_dir: str, optional 
+        Directory to save checkpoints, default is 'checkpoints'.
+    checkpoint_every: int, optional
+        Save checkpoint every N epochs, default is 10.
     
-    Returns:
-        dict: Training history
+    Returns
+    -------
+    history: dict
+        Training history.
     """
-    # Process data into pairs
-    data_pairs = process_simulation_data(simulation_list)
+
+    os.makedirs(checkpoint_dir, exist_ok=True)
+
+    data_pairs_train = process_simulation_data(train_simulation_list)
+    data_pairs_test = process_simulation_data(test_simulation_list)
     
-    # Create dataset
-    dataset = ParticleDataset(data_pairs)
+    train_dataset = ParticleDataset(data_pairs_train)
+    test_dataset = ParticleDataset(data_pairs_test)
     
-    # Split dataset
-    n_val = int(len(dataset) * val_split)
-    n_train = len(dataset) - n_val
-    train_dataset, val_dataset = random_split(dataset, [n_train, n_val])
-    
-    # Create data loaders
     train_loader = DataLoader(
         train_dataset,
-        batch_size=1,  # Must use batch_size=1 for variable N
+        batch_size=1,
         shuffle=True,
         collate_fn=collate_fn
     )
     
     val_loader = DataLoader(
-        val_dataset,
+        test_dataset,
         batch_size=1,
         collate_fn=collate_fn
     )
     
-    # Initialize optimizer and loss function
     optimizer = optim.Adam(model.parameters(), lr=lr)
     criterion = nn.MSELoss()
     
-    # Training history
     history = {
         'train_loss': [],
         'val_loss': [],
         'best_val_loss': float('inf')
     }
     
-    # Training loop
     for epoch in range(n_epochs):
         model.train()
         train_losses = []
-        
-        # Training phase
+
         pbar = tqdm(train_loader, desc=f'Epoch {epoch+1}/{n_epochs}')
         for batch in pbar:
             batch_loss = 0
@@ -81,21 +93,15 @@ def train(model, simulation_list,
                 x = x.to(device)
                 y = y.to(device)
                 
-                # Prepare graph data
                 h, edge_index, edge_attr = prepare_graph_data(x, device=device)
                 
-                # Forward pass
                 predictions = model(h, edge_index, edge_attr)
                 
-                # Reshape predictions and target to match
-                n_particles = x.size(1)
                 y = y.transpose(0, 1)  # From (3, N) to (N, 3)
                 
-                # Compute loss
                 loss = criterion(predictions, y)
                 batch_loss += loss.item()
                 
-                # Backward pass and optimization
                 optimizer.zero_grad()
                 loss.backward()
                 optimizer.step()
@@ -127,15 +133,12 @@ def train(model, simulation_list,
                 batch_loss = batch_loss / len(batch)
                 val_losses.append(batch_loss)
         
-        # Compute average losses
         avg_train_loss = np.mean(train_losses)
         avg_val_loss = np.mean(val_losses)
         
-        # Update history
         history['train_loss'].append(avg_train_loss)
         history['val_loss'].append(avg_val_loss)
         
-        # Save best model
         if avg_val_loss < history['best_val_loss']:
             history['best_val_loss'] = avg_val_loss
             torch.save({
@@ -145,7 +148,16 @@ def train(model, simulation_list,
                 'loss': avg_val_loss,
             }, 'best_model.pt')
         
-        # Print progress
+        if (epoch + 1) % checkpoint_every == 0:
+            checkpoint_path = os.path.join(checkpoint_dir, f'model_epoch_{epoch+1}.pt')
+            torch.save({
+                'epoch': epoch,
+                'model_state_dict': model.state_dict(),
+                'optimizer_state_dict': optimizer.state_dict(),
+                'train_loss': avg_train_loss,
+                'val_loss': avg_val_loss,
+            }, checkpoint_path)
+        
         print(f'\nEpoch {epoch+1}/{n_epochs}')
         print(f'Train Loss: {avg_train_loss:.6f}')
         print(f'Val Loss: {avg_val_loss:.6f}')
@@ -153,17 +165,25 @@ def train(model, simulation_list,
     
     return history
 
-def evaluate_model(model, simulation_list, device='cpu'):
+def evaluate_model(model: nn.Module, 
+                   simulation_list: List, 
+                   device: Optional[str | torch.device] = 'cpu') -> float:
     """
-    Evaluate the model on test data with variable N.
+    Evaluate the model on test data
     
-    Args:
-        model: Trained GNN model
-        simulation_list: List of test simulation arrays
-        device: torch device
+    Parameters
+    ----------
+    model: nn.Module
+        Trained GNN model.
+    simulation_list: List
+        List of test simulation arrays.
+    device: str, optional
+        Either 'cpu', 'cuda' or torch.device instance, default is 'cpu'.
     
-    Returns:
-        float: Mean squared error on test data
+    Returns
+    -------
+    mse: float
+        Mean squared error on test data
     """
     model.eval()
     data_pairs = process_simulation_data(simulation_list)
@@ -197,24 +217,23 @@ if __name__ == '__main__':
 
     test_glob = glob('./data/simulation_test_*')
     test_simulations = [np.load(sim) for sim in test_glob]
-    # Initialize model
+
     model = GNN(
         n_layers=3,
-        in_node_nf=3,  # 3D positions
-        in_edge_nf=0,  # No edge features for now
+        in_node_nf=3,
+        in_edge_nf=0,
         hidden_nf=64,
         device=device
     ).double()
 
-    # Train model
     history = train(
         model=model,
-        simulation_list=train_simulations,
+        train_simulation_list=train_simulations,
+        test_simulation_list=test_simulations,
         n_epochs=10,
         lr=5e-4,
         device=device
     )
 
-    # Evaluate on test data
     test_mse = evaluate_model(model, test_simulations, device=device)
     print(f'Test MSE: {test_mse:.6f}')

@@ -14,7 +14,7 @@ class Simulation:
                  couple_radius: Optional[float] = 0.1, 
                  L_box: Optional[float] = 1.0,
                  timesteps: Optional[int] = 100,
-                 t_max: Optional[float] = 10.0,
+                 delta_t: Optional[float] = 0.1,
                  seed: Optional[int] = 0):
         
         self.N = N
@@ -30,7 +30,7 @@ class Simulation:
         self.L_box = L_box
         
         self.timesteps = timesteps
-        self.t_max= t_max
+        self.delta_t = delta_t
 
         np.random.seed(seed)
         initial_state = np.random.random(3*N)
@@ -38,8 +38,7 @@ class Simulation:
         initial_state = initial_state.reshape(N, 3).T
         self.positions = np.zeros(shape=(self.timesteps, 3, self.N))
         self.positions[0] = initial_state
-        self.times = np.linspace(0, self.t_max, self.timesteps)
-        self.dt = self.times[1]-self.times[0]
+        self.times = np.arange(0, self.delta_t*self.timesteps, self.delta_t)
 
     def particle_system(self, t, positions):
         positions = positions.reshape(self.N, 3).T
@@ -73,11 +72,11 @@ class Simulation:
     
     def solve_dynamics(self, method: Optional[str] = 'RK45'):
 
-        for i, t in enumerate(tqdm(self.times[:-1], leave=False)):
+        for i, t in enumerate(tqdm(self.times[:-1], leave=False, desc='Simulation')):
             sol = solve_ivp(self.particle_system, 
-                            t_span=(t, t+self.dt), 
+                            t_span=(t, t+self.delta_t), 
                             y0=self.positions[i].T.reshape(3*self.N),
-                            t_eval=[t+self.dt], 
+                            t_eval=[t+self.delta_t], 
                             method=method)
             next_state = sol.y[:, -1]
             next_state = self.apply_periodic_boundary(next_state)

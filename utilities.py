@@ -1,18 +1,29 @@
 import torch
+from torch.utils.data import Dataset
 from torch_geometric.utils import dense_to_sparse
 
-def prepare_graph_data(positions, device='cpu'):
+from typing import Optional, List, Tuple
+
+def prepare_graph_data(positions: torch.Tensor, 
+                       device: Optional[str | torch.device] = 'cpu') -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
     """
     Prepare graph data from particle positions.
     
-    Args:
-        positions: tensor of shape (batch_size, 3, N) or (3, N)
-        device: torch device
+    Parameters
+    ----------
+    positions: torch.Tensor
+        Position tensor of shape (batch_size, 3, N) or (3, N).
+    device: str, optional
+        Either 'cpu', 'cuda' or torch.device instance, default is 'cpu'.
     
-    Returns:
-        h: Node features tensor
-        edge_index: Edge index tensor for fully connected graph
-        edge_attr: Edge features tensor (empty for now)
+    Returns
+    -------
+    h: torch.Tensor
+        Node features tensor
+    edge_index: torch.Tensor
+        Edge index tensor for fully connected graph
+    edge_attr: torch.Tensor
+        Edge features tensor
     """
     # Handle both batched and unbatched inputs
     if len(positions.shape) == 3:
@@ -46,18 +57,20 @@ def prepare_graph_data(positions, device='cpu'):
     
     return h, edge_index, edge_attr
 
-def process_simulation_data(simulation_list):
+def process_simulation_data(simulation_list: List) -> List:
     """
-    Process multiple simulations for GNN training.
+    Process multiple simulations for training.
     Returns list of (input, target) pairs instead of concatenated tensors.
     
-    Args:
-        simulation_list: List of simulation arrays, each of shape (timesteps, 3, N)
-                        where N can vary between simulations
+    Parameters
+    ----------
+    simulation_list: List
+        List of simulation arrays, each of shape (timesteps, 3, N) where N can vary between simulations.
     
-    Returns:
-        list of tuples: [(x1, y1), (x2, y2), ...] where each x and y 
-                       represents one timestep pair from any simulation
+    Returns
+    -------
+    data_pair: List 
+        [(x1, y1), (x2, y2), ...] where each x and y represents one timestep pair from any simulation.
     """
     data_pairs = []
     
@@ -74,9 +87,9 @@ def process_simulation_data(simulation_list):
     
     return data_pairs
 
-class ParticleDataset(torch.utils.data.Dataset):
+class ParticleDataset(Dataset):
     """
-    Custom dataset for particle simulations with variable N
+    Dataset for particle simulations with variable N.
     """
     def __init__(self, data_pairs):
         self.data_pairs = data_pairs
@@ -89,7 +102,7 @@ class ParticleDataset(torch.utils.data.Dataset):
 
 def collate_fn(batch):
     """
-    Custom collate function that doesn't try to stack the varying-size tensors
+    Collate function that doesn't try to stack the varying-size tensors
     """
     # Each element in batch is already a (x, y) pair
     return batch
