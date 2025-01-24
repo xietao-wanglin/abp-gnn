@@ -233,7 +233,7 @@ if __name__ == '__main__':
     model = GNN(
         n_layers=3,
         in_node_nf=3,
-        in_edge_nf=0,
+        in_edge_nf=1,
         hidden_nf=64,
         device=device
     ).double()

@@ -47,13 +47,15 @@ def prepare_graph_data(positions: torch.Tensor,
             edge_index_batch = edge_index + (i * n_particles)
             edge_index_batched.append(edge_index_batch)
         edge_index = torch.cat(edge_index_batched, dim=1)
-    
-    # Move to device
-    edge_index = edge_index.to(device)
+
+    xy_coords = positions[:2, :].T  # (N, 2)
+
+    row, col = edge_index
+    edge_attr = torch.norm(xy_coords[row] - xy_coords[col], dim=1).unsqueeze(1) # L^2 norm
+
     h = h.to(device)
-    
-    # For now, we'll use empty edge features
-    edge_attr = torch.zeros(edge_index.shape[1], 0).to(device)
+    edge_index = edge_index.to(device)
+    edge_attr = edge_attr.to(device)
     
     return h, edge_index, edge_attr
 
