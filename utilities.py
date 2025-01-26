@@ -52,7 +52,9 @@ def prepare_graph_data(positions: torch.Tensor,
     xy_coords = positions[:2, :].T  # (N, 2)
 
     row, col = edge_index
-    edge_attr = torch.norm(xy_coords[row] - xy_coords[col], dim=1).unsqueeze(1) # L^2 norm
+    diff = xy_coords[row] - xy_coords[col]  # (num_edges, 2)
+    wrapped_diff = torch.minimum(torch.abs(diff), 1.0 - torch.abs(diff))  # Wrap distances on the torus
+    edge_attr = torch.norm(wrapped_diff, dim=1).unsqueeze(1)  # Compute the toroidal L^2 norm
 
     h = h.to(device)
     edge_index = edge_index.to(device)
