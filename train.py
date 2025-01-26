@@ -1,5 +1,5 @@
 from models import GNN
-from utilities import prepare_graph_data, process_simulation_data, ParticleDataset, collate_fn
+from utilities import prepare_graph_data, process_simulation_data, ParticleDataset, collate_fn, TorusMSELoss
 
 import torch
 import torch.nn as nn
@@ -75,7 +75,7 @@ def train(model: nn.Module,
     )
     
     optimizer = optim.Adam(model.parameters(), lr=lr)
-    criterion = nn.MSELoss()
+    criterion = TorusMSELoss([1, 1, 2*np.pi])
     
     history = {
         'train_loss': [],
@@ -215,7 +215,7 @@ def evaluate_model(model: nn.Module,
                 predictions = model(h, edge_index, edge_attr)
                 
                 y = y.transpose(0, 1)  # From (3, N) to (N, 3)
-                loss = nn.MSELoss()(predictions, y)
+                loss = TorusMSELoss([1, 1, 2*np.pi])(predictions, y)
                 
                 total_loss += loss.item()
                 n_samples += 1
@@ -242,7 +242,7 @@ if __name__ == '__main__':
         model=model,
         train_simulation_list=train_simulations,
         test_simulation_list=test_simulations,
-        n_epochs=10,
+        n_epochs=50,
         lr=5e-4,
         device=device
     )

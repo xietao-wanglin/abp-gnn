@@ -1,4 +1,5 @@
 import torch
+import torch.nn as nn
 from torch.utils.data import Dataset
 from torch_geometric.utils import dense_to_sparse
 
@@ -108,3 +109,27 @@ def collate_fn(batch):
     """
     # Each element in batch is already a (x, y) pair
     return batch
+
+class TorusMSELoss(nn.Module):
+    def __init__(self, torus_dims):
+        """
+        Custom loss function for the torus.
+        
+        Parameters
+        ----------
+        torus_dims array-like
+            The maximum values for each coordinate in the torus.
+        """
+        super(TorusMSELoss, self).__init__()
+        self.torus_dims = torch.tensor(torus_dims, dtype=torch.double)
+
+    def forward(self, pred, target):
+        assert pred.shape == target.shape, "Pred and target tensors must have the same shape"
+
+        # Compute the difference modulo the torus dimensions
+        diff = torch.abs(pred - target)
+        wrapped_diff = torch.minimum(diff, self.torus_dims - diff)
+
+        # Compute the MSE loss with the wrapped differences
+        loss = torch.mean(wrapped_diff.pow(2))
+        return loss
