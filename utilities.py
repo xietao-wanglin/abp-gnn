@@ -85,7 +85,7 @@ def process_simulation_data(simulation_list: List) -> List:
             sim = torch.tensor(sim, dtype=torch.double)
         
         # Create pairs of consecutive timesteps
-        timesteps = torch.randint(0, 99, 4)
+        timesteps = torch.randint(0, 98, size=(4,))
         for t in timesteps:
             x = sim[t]    # (3, N)
             y = sim[t+1]  # (3, N)
