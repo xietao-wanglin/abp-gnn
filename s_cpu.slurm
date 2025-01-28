@@ -8,4 +8,4 @@
 export TQDM_DISABLE=1
 module load GCCcore/13.3.0 Python/3.12.3
 
-srun python ./train.py
+srun python ./create_data.py

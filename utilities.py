@@ -114,7 +114,7 @@ def collate_fn(batch):
     return batch
 
 class TorusMSELoss(nn.Module):
-    def __init__(self, torus_dims):
+    def __init__(self, torus_dims, device):
         """
         Custom loss function for the torus.
         
@@ -124,7 +124,7 @@ class TorusMSELoss(nn.Module):
             The maximum values for each coordinate in the torus.
         """
         super(TorusMSELoss, self).__init__()
-        self.torus_dims = torch.tensor(torus_dims, dtype=torch.double)
+        self.torus_dims = torch.tensor(torus_dims, dtype=torch.double, device=device)
 
     def forward(self, pred, target):
         assert pred.shape == target.shape, "Pred and target tensors must have the same shape"

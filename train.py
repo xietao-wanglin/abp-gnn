@@ -75,7 +75,7 @@ def train(model: nn.Module,
     )
     
     optimizer = optim.Adam(model.parameters(), lr=lr)
-    criterion = TorusMSELoss([1, 1, 2*np.pi])
+    criterion = TorusMSELoss([1, 1, 2*np.pi], device=device)
     
     history = {
         'train_loss': [],
