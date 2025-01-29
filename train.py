@@ -23,8 +23,9 @@ def train(model: nn.Module,
           lr: Optional[float] = 5e-4, 
           device: Optional[str | torch.device] = 'cpu',
           checkpoint_dir: Optional[str] = 'checkpoints',
-          checkpoint_every: Optional[int] = 10,
-          hist_filename: Optional[str]= 'training_history') -> Dict:
+          checkpoint_every: Optional[int] = 2,
+          hist_filename: Optional[str] = 'training_history',
+          long: Optional[bool] = False) -> Dict:
     """
     Train the GNN model.
     
@@ -55,8 +56,8 @@ def train(model: nn.Module,
 
     os.makedirs(checkpoint_dir, exist_ok=True)
 
-    data_pairs_train = process_simulation_data(train_simulation_list)
-    data_pairs_test = process_simulation_data(test_simulation_list)
+    data_pairs_train = process_simulation_data(train_simulation_list, long=long)
+    data_pairs_test = process_simulation_data(test_simulation_list, long=long)
     
     train_dataset = ParticleDataset(data_pairs_train)
     test_dataset = ParticleDataset(data_pairs_test)
@@ -75,7 +76,7 @@ def train(model: nn.Module,
     )
     
     optimizer = optim.Adam(model.parameters(), lr=lr)
-    criterion = TorusMSELoss([1, 1, 2*np.pi], device=device)
+    criterion = nn.MSELoss()
     
     history = {
         'train_loss': [],
@@ -203,6 +204,7 @@ def evaluate_model(model: nn.Module,
     loader = DataLoader(dataset, batch_size=1, collate_fn=collate_fn)
     
     total_loss = 0
+    criterion = nn.MSELoss()
     n_samples = 0
     
     with torch.no_grad():
@@ -215,7 +217,7 @@ def evaluate_model(model: nn.Module,
                 predictions = model(h, edge_index, edge_attr)
                 
                 y = y.transpose(0, 1)  # From (3, N) to (N, 3)
-                loss = TorusMSELoss([1, 1, 2*np.pi])(predictions, y)
+                loss = criterion(predictions, y)
                 
                 total_loss += loss.item()
                 n_samples += 1
@@ -224,16 +226,16 @@ def evaluate_model(model: nn.Module,
 
 if __name__ == '__main__':
 
-    train_glob = glob('./data/simulation_train_*')
+    train_glob = glob('./data/simulation_train_*')[:5000]
     train_simulations = [np.load(sim) for sim in train_glob]
 
-    test_glob = glob('./data/simulation_test_*')
+    test_glob = glob('./data/simulation_test_*')[:1000]
     test_simulations = [np.load(sim) for sim in test_glob]
 
     model = GNN(
         n_layers=3,
-        in_node_nf=3,
-        in_edge_nf=1,
+        in_node_nf=6,
+        in_edge_nf=0,
         hidden_nf=64,
         device=device
     ).double()
@@ -244,6 +246,7 @@ if __name__ == '__main__':
         test_simulation_list=test_simulations,
         n_epochs=50,
         lr=5e-4,
+        long=True,
         device=device
     )
 

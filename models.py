@@ -278,7 +278,7 @@ class GNN(nn.Module):
         self.decoder = nn.Sequential(
             nn.Linear(hidden_nf, hidden_nf),
             activation,
-            nn.Linear(hidden_nf, 3)
+            nn.Linear(hidden_nf, 6)
         )
         self.to(device)
 
