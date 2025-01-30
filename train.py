@@ -82,6 +82,19 @@ def train(model: nn.Module,
     optimizer = AdamW(model.parameters(), lr=lr, weight_decay=weight_decay)
     scheduler = CosineAnnealingLR(optimizer, T_max=30)
     criterion = nn.MSELoss()
+
+    train_details = {
+        'optimizer': str(optimizer),
+        'scheduler': str(scheduler),
+        'criterion': str(criterion),
+        'model': str(model)
+    }
+
+    details_path = os.path.join(checkpoint_dir, f'details.json')
+    with open(details_path, 'w') as f:
+        json.dump(train_details, f, indent=4)
+    
+    print(f'Training details saved to {details_path}')
     
     history = {
         'train_loss': [],
@@ -149,13 +162,14 @@ def train(model: nn.Module,
         history['val_loss'].append(avg_val_loss)
         
         if avg_val_loss < history['best_val_loss']:
+            checkpoint_path = os.path.join(checkpoint_dir, f'best_model.pt')
             history['best_val_loss'] = avg_val_loss
             torch.save({
                 'epoch': epoch,
                 'model_state_dict': model.state_dict(),
                 'optimizer_state_dict': optimizer.state_dict(),
                 'loss': avg_val_loss,
-            }, 'best_model.pt')
+            }, checkpoint_path)
         
         if (epoch + 1) % checkpoint_every == 0:
             checkpoint_path = os.path.join(checkpoint_dir, f'model_epoch_{epoch+1}.pt')
