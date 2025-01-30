@@ -249,13 +249,15 @@ class EGMN(nn.Module):
         return cur_vectors[-1], scalars
 
 class GNN_Layer(nn.Module):
-    def __init__(self, in_edge_nf, hidden_nf, activation=nn.SiLU(), with_v=False, flat=False):
+    def __init__(self, in_edge_nf, hidden_nf, activation=nn.SiLU(), with_v=False, flat=False, dropout=0.1, norm=True):
         super(GNN_Layer, self).__init__()
         self.with_v = with_v
         self.edge_message_net = BaseMLP(input_dim=in_edge_nf + 2 * hidden_nf, hidden_dim=hidden_nf, output_dim=hidden_nf,
                                         activation=activation, flat=flat)
         self.node_net = BaseMLP(input_dim=hidden_nf + hidden_nf, hidden_dim=hidden_nf, output_dim=hidden_nf,
                                 activation=activation, flat=flat)
+        self.dropout = nn.Dropout(dropout) if dropout > 0 else None
+        self.norm = nn.LayerNorm(hidden_nf) if norm else None
 
     def forward(self, h, edge_index, edge_fea):
         row, col = edge_index
@@ -263,21 +265,39 @@ class GNN_Layer(nn.Module):
         message = self.edge_message_net(hij)  # [BM, K]
         agg = aggregate(message=message, row_index=row, n_node=h.shape[0], aggr='mean')  # [BN, K]
         h = h + self.node_net(torch.cat((agg, h), dim=-1))
+        if self.norm:
+            h = self.norm(h)
+
+        if self.dropout:
+            h = self.dropout(h)
+
         return h
 
 class GNN(nn.Module):
-    def __init__(self, n_layers, in_node_nf, in_edge_nf, hidden_nf, activation=nn.SiLU(), device='cpu', flat=False):
+    def __init__(self, n_layers, 
+                 in_node_nf, 
+                 in_edge_nf, 
+                 hidden_nf, 
+                 activation=nn.SiLU(), 
+                 device='cpu', 
+                 flat=False, 
+                 dropout=0.1, 
+                 norm=True):
         super(GNN, self).__init__()
         self.layers = nn.ModuleList()
         self.n_layers = n_layers
+        self.norm = norm
+        self.dropout = nn.Dropout(dropout) if dropout > 0 else None
+        self.norm_layers = nn.ModuleList([nn.LayerNorm(hidden_nf) for _ in range(n_layers)]) if norm else None
         # input feature mapping
         self.embedding = nn.Linear(in_node_nf, hidden_nf)
         for i in range(self.n_layers):
-            layer = GNN_Layer(in_edge_nf, hidden_nf, activation=activation, flat=flat)
+            layer = GNN_Layer(in_edge_nf, hidden_nf, activation=activation, flat=flat, dropout=dropout, norm=norm)
             self.layers.append(layer)
         self.decoder = nn.Sequential(
             nn.Linear(hidden_nf, hidden_nf),
             activation,
+            nn.Dropout(dropout) if dropout else nn.Identity(),
             nn.Linear(hidden_nf, 6)
         )
         self.to(device)
@@ -286,6 +306,10 @@ class GNN(nn.Module):
         h = self.embedding(h)
         for i in range(self.n_layers):
             h = self.layers[i](h, edge_index, edge_fea)
+            if self.norm:
+                h = self.norm_layers[i](h)
+            if self.dropout:
+                h = self.dropout(h)
         h = self.decoder(h)
         return h
 

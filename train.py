@@ -3,7 +3,8 @@ from utilities import prepare_graph_data, process_simulation_data, ParticleDatas
 
 import torch
 import torch.nn as nn
-import torch.optim as optim
+from torch.optim import AdamW
+from torch.optim.lr_scheduler import CosineAnnealingLR
 from torch.utils.data import DataLoader
 
 import numpy as np
@@ -21,6 +22,7 @@ def train(model: nn.Module,
           test_simulation_list: List,
           n_epochs: Optional[int] = 100, 
           lr: Optional[float] = 5e-4, 
+          weight_decay: Optional[float] = 1e-4,
           device: Optional[str | torch.device] = 'cpu',
           checkpoint_dir: Optional[str] = 'checkpoints',
           checkpoint_every: Optional[int] = 2,
@@ -40,7 +42,9 @@ def train(model: nn.Module,
     n_epochs: int, optional
         Number of epochs to train, default is 100.
     lr: float, optional
-        Learning rate of Adam optimiser, default is 5e-4.
+        Learning rate of AdamW optimiser, default is 5e-4.
+    weight_decay: float, optional
+        Weight decay of AdamW optimiser, default is 1e-4.
     device: str, optional
         Either 'cpu', 'cuda' or torch.device instance, default is 'cpu'.
     checkpoint_dir: str, optional 
@@ -75,7 +79,8 @@ def train(model: nn.Module,
         collate_fn=collate_fn
     )
     
-    optimizer = optim.Adam(model.parameters(), lr=lr)
+    optimizer = AdamW(model.parameters(), lr=lr, weight_decay=weight_decay)
+    scheduler = CosineAnnealingLR(optimizer, T_max=30)
     criterion = nn.MSELoss()
     
     history = {
@@ -116,6 +121,7 @@ def train(model: nn.Module,
             # Update progress bar
             pbar.set_postfix({'train_loss': f'{batch_loss:.6f}'})
         
+        scheduler.step()
         # Validation phase
         model.eval()
         val_losses = []
@@ -237,6 +243,7 @@ if __name__ == '__main__':
         in_node_nf=6,
         in_edge_nf=0,
         hidden_nf=64,
+        dropout=0.1,
         device=device
     ).double()
 
@@ -246,6 +253,7 @@ if __name__ == '__main__':
         test_simulation_list=test_simulations,
         n_epochs=50,
         lr=5e-4,
+        weight_decay=1e-4,
         long=True,
         device=device
     )
