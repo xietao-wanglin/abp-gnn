@@ -257,8 +257,9 @@ if __name__ == '__main__':
         in_node_nf=6,
         in_edge_nf=0,
         hidden_nf=64,
-        dropout=0.1,
-        device=device
+        dropout=0,
+        device=device,
+        force_circle=True
     ).double()
 
     history = train(

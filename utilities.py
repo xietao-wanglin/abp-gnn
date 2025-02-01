@@ -193,3 +193,16 @@ class TorusMSELoss(nn.Module):
         wrapped_diff = torch.minimum(diff, self.torus_dims - diff)
         loss = torch.mean(wrapped_diff.pow(2))
         return loss
+
+class NormalizeOutput(nn.Module):
+    """Normalize pairs of outputs to unit length"""
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        # Reshape to (3, 2, N) to handle pairs
+        x = x.transpose(1, 0)
+        x = x.reshape(3, 2, x.shape[-1])
+        # Normalize each pair
+        norms = torch.norm(x, dim=-2, keepdim=True)
+        x = x / norms
+        x = x.reshape(6, x.shape[-1])
+        x = x.transpose(1, 0)
+        return x

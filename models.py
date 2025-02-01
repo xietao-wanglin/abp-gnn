@@ -26,6 +26,7 @@ SOFTWARE.
 from torch import nn
 import torch
 import torch.nn.functional as F
+from utilities import NormalizeOutput
 
 def aggregate(message, row_index, n_node, aggr='sum', mask=None):
     """
@@ -282,7 +283,8 @@ class GNN(nn.Module):
                  device='cpu', 
                  flat=False, 
                  dropout=0.1, 
-                 norm=True):
+                 norm=True,
+                 force_circle=True):
         super(GNN, self).__init__()
         self.layers = nn.ModuleList()
         self.n_layers = n_layers
@@ -301,6 +303,7 @@ class GNN(nn.Module):
             nn.Linear(hidden_nf, 6)
         )
         self.to(device)
+        self.normalize = NormalizeOutput() if force_circle else None
 
     def forward(self, h, edge_index, edge_fea):
         h = self.embedding(h)
@@ -311,6 +314,8 @@ class GNN(nn.Module):
             if self.dropout:
                 h = self.dropout(h)
         h = self.decoder(h)
+        if self.normalize:
+            h = self.normalize(h)
         return h
 
 class Linear_dynamics(nn.Module):
