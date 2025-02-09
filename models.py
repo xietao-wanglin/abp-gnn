@@ -27,6 +27,7 @@ from torch import nn
 import torch
 import torch.nn.functional as F
 from utilities import NormalizeOutput
+from torch_geometric.nn import GATv2Conv
 
 def aggregate(message, row_index, n_node, aggr='sum', mask=None):
     """
@@ -405,3 +406,56 @@ class FullMLP(nn.ModuleList):
         for i in range(len(self.layers)):
             x = self.layers[i](x)
         return self.output(x)
+
+class GATLayer(nn.Module):
+    def __init__(self, in_features, out_features, heads=1, concat=False, activation=nn.SiLU(), dropout=0.1, norm=True):
+        super(GATLayer, self).__init__()
+        self.gat = GATv2Conv(in_features, out_features // heads, heads=heads, concat=concat, dropout=dropout)
+        self.activation = activation
+        self.norm = nn.LayerNorm(out_features) if norm else None
+        self.dropout = nn.Dropout(dropout) if dropout else None
+    
+    def forward(self, x, edge_index):
+        x = self.gat(x, edge_index)
+        if self.activation:
+            x = self.activation(x)
+        if self.norm:
+            x = self.norm(x)
+        if self.dropout:
+            x = self.dropout(x)
+        return x
+
+class GAT(nn.Module):
+    def __init__(self, n_layers, in_node_nf, 
+                 hidden_nf, heads=1, 
+                 activation=nn.SiLU(), device='cpu', dropout=0.1, norm=True, force_circle=True):
+        super(GAT, self).__init__()
+        self.n_layers = n_layers
+        self.norm = norm
+        self.embedding = nn.Linear(in_node_nf, hidden_nf)
+        self.layers = nn.ModuleList()
+        for _ in range(n_layers):
+            self.layers.append(GATLayer(hidden_nf, 
+                                        hidden_nf, 
+                                        heads=heads, 
+                                        activation=activation, 
+                                        dropout=dropout, 
+                                        norm=norm,
+                                        concat=True))
+        self.decoder = nn.Sequential(
+            nn.Linear(hidden_nf, hidden_nf),
+            activation,
+            nn.Dropout(dropout) if dropout else nn.Identity(),
+            nn.Linear(hidden_nf, 6)
+        )
+        self.normalize = NormalizeOutput() if force_circle else None
+        self.to(device)
+    
+    def forward(self, x, edge_index):
+        x = self.embedding(x)
+        for layer in self.layers:
+            x = layer(x, edge_index)
+        x = self.decoder(x)
+        if self.normalize:
+            x = self.normalize(x)
+        return x
