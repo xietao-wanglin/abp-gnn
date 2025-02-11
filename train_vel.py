@@ -1,4 +1,4 @@
-from models import GNN, GAT
+from models import GNN_vel, GAT
 from utilities import process_simulation_data, ParticleDataset, collate_fn
 
 import torch
@@ -130,7 +130,7 @@ def train(model: nn.Module,
                 res = res.transpose(0, 1).to(device)
                 
                 predictions_res = model(x, edge_index, edge_attr)
-                predictions = predictions_res/10 + x
+                predictions = predictions_res + x
 
                 loss_res = criterion(predictions_res, res)
                 loss = criterion(predictions, y)
@@ -168,7 +168,7 @@ def train(model: nn.Module,
                     res = res.transpose(0, 1).to(device)
 
                     predictions_res = model(x, edge_index, edge_attr)
-                    predictions = predictions_res/10 + x
+                    predictions = predictions_res + x
 
                     loss_res = criterion(predictions_res, res)
                     batch_loss_res += loss_res.item()
@@ -288,20 +288,20 @@ def evaluate_model(model: nn.Module,
 
 if __name__ == '__main__':
 
-    train_glob = glob('./data_medium/simulation_train_*')[:1000]
+    train_glob = glob('./data_abs/simulation_train_*')[:1000]
     train_simulations = [np.load(sim) for sim in train_glob]
 
-    test_glob = glob('./data_medium/simulation_test_*')[:200]
+    test_glob = glob('./data_abs/simulation_test_*')[:200]
     test_simulations = [np.load(sim) for sim in test_glob]
 
-    model = GNN(
+    model = GNN_vel(
         n_layers=3,
-        in_node_nf=6,
+        in_node_nf=3,
         in_edge_nf=1,
         hidden_nf=64,
         dropout=0,
         device=device,
-        force_circle=True
+        norm=True
     ).to(dtype=dtype)
 
     history = train(
@@ -314,7 +314,7 @@ if __name__ == '__main__':
         weight_decay=1e-4,
         subset=True,
         device=device,
-        weights=torch.tensor([1, 0])
+        weights=torch.tensor([0, 1])
     )
 
     test_mse = evaluate_model(model, test_simulations, device=device)

@@ -158,11 +158,12 @@ def process_simulation_data(simulation_list: List,
             timesteps = range(num_timesteps)
 
         for t in timesteps:
-            x = transformed_sim[t]    # (6, N)
-            y = transformed_sim[t+1]  # (6, N)
-            edge_index, edge_attr = compute_knn_graph(x, k=k, device=device)
+            x = sim[t]    # (3, N)
+            y = sim[t+1]  # (3, N)
+            x_periodic = transformed_sim[t]
+            edge_index, edge_attr = compute_knn_graph(x_periodic, k=k, device=device)
 
-            data_pairs.append((x, y, 10*(y-x), edge_index, edge_attr))
+            data_pairs.append((x, y, y-x, edge_index, edge_attr))
     
     return data_pairs
 
