@@ -38,6 +38,8 @@ class Simulation:
         initial_state = initial_state.reshape(N, 3).T
         self.positions = np.zeros(shape=(self.timesteps, 3, self.N))
         self.positions[0] = initial_state
+        self.pos_absolute = np.zeros(shape=(self.timesteps, 3, self.N))
+        self.pos_absolute[0] = initial_state
         self.times = np.arange(0, self.delta_t*self.timesteps, self.delta_t)
 
     def particle_system(self, t, positions):
@@ -79,6 +81,7 @@ class Simulation:
                             t_eval=[t+self.delta_t], 
                             method=method)
             next_state = sol.y[:, -1]
+            self.pos_absolute[i+1] = next_state.reshape(self.N, 3).T
             next_state = self.apply_periodic_boundary(next_state)
             self.positions[i+1] = next_state.reshape(self.N, 3).T
     
@@ -107,3 +110,6 @@ class Simulation:
         if filename is not None:
             animation.save(f'./videos/{filename}', writer='ffmpeg', fps=20)
         plt.show()
+
+    def get_solution_abs(self):
+        return self.times, self.pos_absolute
