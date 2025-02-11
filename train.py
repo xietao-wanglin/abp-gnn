@@ -83,7 +83,8 @@ def train(model: nn.Module,
     
     optimizer = AdamW(model.parameters(), lr=lr, weight_decay=weight_decay)
     scheduler = CosineAnnealingLR(optimizer, T_max=50)
-    criterion = nn.MSELoss(reduction='mean')
+    criterion = nn.MSELoss(reduction='none')
+    weights = torch.tensor([1, 1, 1, 1, 4*np.pi*np.pi, 4*np.pi*np.pi], device=device)
 
     train_details = {
         'optimizer': str(optimizer),
@@ -119,7 +120,8 @@ def train(model: nn.Module,
                 predictions = model(x, edge_index, edge_attr)
 
                 loss = criterion(predictions, y)
-                
+                loss = (weights*loss).mean()
+
                 optimizer.zero_grad()
                 loss.backward()
                 optimizer.step()
@@ -144,6 +146,7 @@ def train(model: nn.Module,
                     predictions = model(x, edge_index, edge_attr)
                     
                     loss = criterion(predictions, y)
+                    loss = (weights*loss).mean()
                     batch_loss += loss.item()
                 
                 val_losses.append(batch_loss/len(batch))
@@ -252,6 +255,17 @@ if __name__ == '__main__':
         device=device,
         force_circle=True
     ).to(dtype=dtype)
+
+    #    model = GAT(
+    #        n_layers=3,
+    #        in_node_nf=6,
+    #        edge_dim=1,
+    #        hidden_nf=64,
+    #        dropout=0,
+    #        device=device,
+    #        force_circle=True,
+    #        heads=4,
+    #    ).to(dtype=dtype)
 
     history = train(
         model=model,
