@@ -67,6 +67,7 @@ class Simulation:
         return derivative.T.reshape(3*self.N)
 
     def apply_periodic_boundary(self, positions):
+        positions = positions.copy()
         positions[::3] = positions[::3] % self.L_box
         positions[1::3] = positions[1::3] % self.L_box
         positions[2::3] = positions[2::3] % (2*np.pi)

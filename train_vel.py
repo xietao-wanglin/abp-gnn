@@ -21,6 +21,8 @@ dtype = torch.float
 def train(model: nn.Module, 
           train_simulation_list: List, 
           test_simulation_list: List,
+          cluster_method: str,
+          cluster_parameter: float | int,
           batch_size: Optional[int] = 1,
           n_epochs: Optional[int] = 100, 
           lr: Optional[float] = 5e-4, 
@@ -30,7 +32,8 @@ def train(model: nn.Module,
           checkpoint_every: Optional[int] = 2,
           hist_filename: Optional[str] = 'training_history',
           subset: Optional[bool] = False,
-          weights: Optional[torch.Tensor] = None) -> Dict:
+          weights: Optional[torch.Tensor] = None,
+          base_model_path: Optional[str] = None) -> Dict:
     """
     Train the GNN model.
     
@@ -66,8 +69,18 @@ def train(model: nn.Module,
 
     os.makedirs(checkpoint_dir, exist_ok=True)
 
-    data_pairs_train = process_simulation_data(train_simulation_list, subset=subset, dtype=dtype, device=device)
-    data_pairs_test = process_simulation_data(test_simulation_list, subset=subset, dtype=dtype, device=device)
+    data_pairs_train = process_simulation_data(train_simulation_list, 
+                                               cluster_method=cluster_method,
+                                               p=cluster_parameter,
+                                               subset=subset, 
+                                               dtype=dtype, 
+                                               device=device)
+    data_pairs_test = process_simulation_data(test_simulation_list, 
+                                              cluster_method=cluster_method,
+                                              p=cluster_parameter,
+                                              subset=subset, 
+                                              dtype=dtype, 
+                                              device=device)
     
     train_dataset = ParticleDataset(data_pairs_train)
     test_dataset = ParticleDataset(data_pairs_test)
@@ -86,9 +99,9 @@ def train(model: nn.Module,
     )
     
     optimizer = AdamW(model.parameters(), lr=lr, weight_decay=weight_decay)
-    scheduler = CosineAnnealingLR(optimizer, T_max=50)
+    scheduler = CosineAnnealingLR(optimizer, T_max=n_epochs)
     criterion = nn.MSELoss(reduction='none')
-    weights = torch.tensor([2*np.pi, 2*np.pi, 1,], device=device)
+    weights = torch.tensor([1, 1, 1,], device=device)
 
     train_details = {
         'optimizer': str(optimizer),
@@ -108,8 +121,16 @@ def train(model: nn.Module,
         'val_loss': [],
         'best_val_loss': float('inf')
     }
+
+    initial_epoch = 0 
+    if base_model_path is not None:
+        params = torch.load(base_model_path, map_location=device)
+        model.load_state_dict(params['model_state_dict'])
+        optimizer.load_state_dict(params['optimizer_state_dict'])
+        scheduler.load_state_dict(params['scheduler_state_dict'])
+        initial_epoch = params['epoch']
     
-    for epoch in range(n_epochs):
+    for epoch in range(initial_epoch, n_epochs+initial_epoch):
         model.train()
         train_losses = []
 
@@ -172,7 +193,9 @@ def train(model: nn.Module,
                 'epoch': epoch,
                 'model_state_dict': model.state_dict(),
                 'optimizer_state_dict': optimizer.state_dict(),
-                'loss': avg_val_loss,
+                'scheduler_state_dict': scheduler.state_dict(),
+                'train_loss': avg_train_loss,
+                'val_loss': avg_val_loss
             }, checkpoint_path)
         
         if (epoch + 1) % checkpoint_every == 0:
@@ -181,6 +204,7 @@ def train(model: nn.Module,
                 'epoch': epoch,
                 'model_state_dict': model.state_dict(),
                 'optimizer_state_dict': optimizer.state_dict(),
+                'scheduler_state_dict': scheduler.state_dict(),
                 'train_loss': avg_train_loss,
                 'val_loss': avg_val_loss,
             }, checkpoint_path)
@@ -204,9 +228,11 @@ def train(model: nn.Module,
 
 def evaluate_model(model: nn.Module, 
                    simulation_list: List, 
+                   cluster_method: str,
+                   cluster_parameter: float | int,
                    device: Optional[str | torch.device] = 'cpu') -> float:
     """
-    Evaluate the model on test data
+    TODO: Evaluate the model on test data
     
     Parameters
     ----------
@@ -223,7 +249,9 @@ def evaluate_model(model: nn.Module,
         Mean squared error on test data
     """
     model.eval()
-    data_pairs = process_simulation_data(simulation_list)
+    data_pairs = process_simulation_data(simulation_list, 
+                                         cluster_method=cluster_method,
+                                         p=cluster_parameter)
     dataset = ParticleDataset(data_pairs)
     loader = DataLoader(dataset, batch_size=1, collate_fn=collate_fn)
     
@@ -266,6 +294,8 @@ if __name__ == '__main__':
 
     history = train(
         model=model,
+        cluster_method='radius',
+        cluster_parameter=0.6,
         batch_size=1,
         train_simulation_list=train_simulations,
         test_simulation_list=test_simulations,
@@ -276,5 +306,5 @@ if __name__ == '__main__':
         device=device,
     )
 
-    test_mse = evaluate_model(model, test_simulations, device=device)
-    print(f'Test MSE: {test_mse:.6f}')
+    #test_mse = evaluate_model(model, test_simulations, device=device, cluster_method='radius', cluster_parameter=0.6)
+    #print(f'Test MSE: {test_mse:.6f}')

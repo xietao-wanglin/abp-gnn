@@ -1,7 +1,7 @@
 import torch
 import torch.nn as nn
 from torch.utils.data import Dataset
-from torch_cluster import knn_graph
+from torch_cluster import knn_graph, radius_graph
 
 from typing import Optional, List, Tuple
 class TorusMSELoss(nn.Module):
@@ -39,6 +39,12 @@ class NormalizeOutput(nn.Module):
         x = x.transpose(1, 0)
         return x
 
+def apply_periodic_boundary(positions):
+    pos = positions.clone()
+    pos[0] = pos[0] % 1.0
+    pos[1] = pos[1] % 1.0
+    pos[2] = pos[2] % (2*torch.pi)
+    return pos
 
 def to_periodic(coords: torch.Tensor) -> torch.Tensor:
     """
@@ -48,14 +54,14 @@ def to_periodic(coords: torch.Tensor) -> torch.Tensor:
     ----------
     coords: torch.Tensor
         Input coordinates of shape (..., 3, N) containing [x, y, theta]
-        (x, y) expected in [0, 1], theta in [0, 2pi]
+        (x, y) expected in [0, 1]
 
     Returns
     -------
     periodic: torch.Tensor
-        Transformed coordinates of shape (..., 6, N)
+        Transformed coordinates of shape (..., 4, N)
     """
-    periodic = torch.empty((*coords.shape[:-2], 6, coords.shape[-1]), 
+    periodic = torch.empty((*coords.shape[:-2], 4, coords.shape[-1]), 
                         dtype=coords.dtype, device=coords.device)
 
     periodic[..., 0, :] = torch.sin(2 * torch.pi * coords[..., 0, :])
@@ -63,9 +69,6 @@ def to_periodic(coords: torch.Tensor) -> torch.Tensor:
 
     periodic[..., 2, :] = torch.sin(2 * torch.pi * coords[..., 1, :])
     periodic[..., 3, :] = torch.cos(2 * torch.pi * coords[..., 1, :])
-
-    periodic[..., 4, :] = torch.sin(coords[..., 2, :])
-    periodic[..., 5, :] = torch.cos(coords[..., 2, :])
 
     return periodic
 
@@ -84,7 +87,7 @@ def from_periodic(periodic: torch.Tensor) -> torch.Tensor:
         Original coordinates of shape (..., 3, N) 
         with (x, y) in [0, 1] and theta in [0, 2pi]
     """
-    coords = torch.empty((*periodic.shape[:-2], 3, periodic.shape[-1]), 
+    coords = torch.empty((*periodic.shape[:-2], 2, periodic.shape[-1]), 
                         dtype=periodic.dtype, device=periodic.device)
 
     # Recover x coordinate
@@ -101,19 +104,13 @@ def from_periodic(periodic: torch.Tensor) -> torch.Tensor:
                                     coords[..., 1, :] + 1, 
                                     coords[..., 1, :])
 
-    # Recover theta coordinate
-    coords[..., 2, :] = torch.atan2(periodic[..., 4, :], 
-                                    periodic[..., 5, :])
-    coords[..., 2, :] = torch.where(coords[..., 2, :] < 0, 
-                                    coords[..., 2, :] + 2*torch.pi, 
-                                    coords[..., 2, :])
-
     return coords
 
 def process_simulation_data(simulation_list: List, 
                             subset: Optional[bool] = False,
                             n_samples: Optional[int] = 4,
-                            k: Optional[int] = 4, 
+                            cluster_method: Optional[str] = 'radius',
+                            p: Optional[int] = 4, 
                             dtype: Optional[torch.dtype] = torch.float,
                             device: Optional[str | torch.device] = 'cpu') -> List:
     """
@@ -160,15 +157,22 @@ def process_simulation_data(simulation_list: List,
         for t in timesteps:
             x = sim[t]    # (3, N)
             y = sim[t+1]  # (3, N)
-            x_periodic = transformed_sim[t]
-            edge_index, edge_attr = compute_knn_graph(x_periodic, k=k, device=device)
 
-            data_pairs.append((x, y, y-x, edge_index, edge_attr))
+            x = apply_periodic_boundary(x) # Ensure [0, 1] x [0, 1] x [0, 2pi]
+            
+            x[2] = x[2] / (2*torch.pi)
+            y[2] = y[2] / (2*torch.pi)
+
+            x_periodic = transformed_sim[t] # (6, N)
+            edge_index, edge_attr = compute_graph(x_periodic, method=cluster_method, p=p, device=device)
+
+            data_pairs.append((x, y, (y-x), edge_index, edge_attr))
     
     return data_pairs
 
-def compute_knn_graph(x: torch.Tensor, 
-                      k: Optional[int] = 4, 
+def compute_graph(x: torch.Tensor, 
+                      method: str,
+                      p: Optional[float | int] = 4, 
                       device: Optional[str | torch.device] = 'cpu') -> Tuple[torch.Tensor, torch.Tensor]:
     """
     Compute k-NN graph for a given set of node features.
@@ -191,7 +195,12 @@ def compute_knn_graph(x: torch.Tensor,
     """
 
     x = x.T
-    edge_index = knn_graph(x, k=k).to(device)  # Shape (2, E)
+    if method == 'radius':
+        edge_index = radius_graph(x, r=p).to(device)
+    elif method == 'knn':
+        edge_index = knn_graph(x, k=p).to(device)  # Shape (2, E)
+    else:
+        raise ValueError('Invalid method')
 
     # Compute L^2 distances
     row, col = edge_index
@@ -205,6 +214,7 @@ def collate_fn(batch):
     """
     # Each element in batch is already a (x, y) pair
     return batch
+
 class ParticleDataset(Dataset):
     """
     Dataset for particle simulations with variable N.
