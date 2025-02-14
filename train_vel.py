@@ -1,4 +1,4 @@
-from models import GNN_vel, GAT
+from models import GNN_vel, GAT_vel
 from utilities import process_simulation_data, ParticleDataset, collate_fn
 
 import torch
@@ -285,7 +285,17 @@ if __name__ == '__main__':
     model = GNN_vel(
         n_layers=3,
         in_node_nf=3,
-        in_edge_nf=1,
+        in_edge_nf=2,
+        hidden_nf=64,
+        dropout=0,
+        device=device,
+        norm=True
+    ).to(dtype=dtype)
+
+    model = GAT_vel(
+        n_layers=3,
+        in_node_nf=3,
+        in_edge_nf=3,
         hidden_nf=64,
         dropout=0,
         device=device,
@@ -295,7 +305,7 @@ if __name__ == '__main__':
     history = train(
         model=model,
         cluster_method='radius',
-        cluster_parameter=0.6,
+        cluster_parameter=0.63,
         batch_size=1,
         train_simulation_list=train_simulations,
         test_simulation_list=test_simulations,

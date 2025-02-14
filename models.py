@@ -515,3 +515,41 @@ class GNN_vel(nn.Module):
                 h = self.dropout(h)
         h = self.decoder(h)
         return h
+
+class GAT_vel(nn.Module):
+    def __init__(self, n_layers, in_node_nf, 
+                 hidden_nf, heads=4, in_edge_nf=0,
+                 activation=nn.SiLU(), device='cpu', dropout=0.0, norm=True):
+        super(GAT_vel, self).__init__()
+        self.n_layers = n_layers
+        self.norm = norm
+        self.embedding = nn.Linear(in_node_nf, hidden_nf)
+        self.edge_embedding = nn.Sequential(
+            nn.Linear(in_edge_nf, in_edge_nf),
+            activation
+        )
+        self.layers = nn.ModuleList()
+        for _ in range(n_layers):
+            self.layers.append(GATLayer(hidden_nf, 
+                                        hidden_nf, 
+                                        edge_dim=in_edge_nf,
+                                        heads=heads, 
+                                        activation=activation, 
+                                        dropout=dropout, 
+                                        norm=norm,
+                                        concat=True))
+        self.decoder = nn.Sequential(
+            nn.Linear(hidden_nf, hidden_nf),
+            activation,
+            nn.Dropout(dropout) if dropout else nn.Identity(),
+            nn.Linear(hidden_nf, 3)
+        )
+        self.to(device)
+    
+    def forward(self, x, edge_index, edge_attr):
+        x = self.embedding(x)
+        edge_attr = self.edge_embedding(edge_attr)
+        for layer in self.layers:
+            x = layer(x, edge_index, edge_attr)
+        x = self.decoder(x)
+        return x

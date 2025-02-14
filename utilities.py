@@ -61,7 +61,7 @@ def to_periodic(coords: torch.Tensor) -> torch.Tensor:
     periodic: torch.Tensor
         Transformed coordinates of shape (..., 4, N)
     """
-    periodic = torch.empty((*coords.shape[:-2], 4, coords.shape[-1]), 
+    periodic = torch.empty((*coords.shape[:-2], 5, coords.shape[-1]), 
                         dtype=coords.dtype, device=coords.device)
 
     periodic[..., 0, :] = torch.sin(2 * torch.pi * coords[..., 0, :])
@@ -69,6 +69,8 @@ def to_periodic(coords: torch.Tensor) -> torch.Tensor:
 
     periodic[..., 2, :] = torch.sin(2 * torch.pi * coords[..., 1, :])
     periodic[..., 3, :] = torch.cos(2 * torch.pi * coords[..., 1, :])
+
+    periodic[..., 4, :] = coords[..., 2, :]
 
     return periodic
 
@@ -194,17 +196,28 @@ def compute_graph(x: torch.Tensor,
         Edge features (L^2 distances), shape (E, 1).
     """
 
-    x = x.T
+    xy, theta = x[:-1], x[-1]
+    xy = xy.transpose(0, 1)
     if method == 'radius':
-        edge_index = radius_graph(x, r=p).to(device)
+        edge_index = radius_graph(xy, r=p).to(device)
     elif method == 'knn':
-        edge_index = knn_graph(x, k=p).to(device)  # Shape (2, E)
+        edge_index = knn_graph(xy, k=p).to(device)  # Shape (2, E)
     else:
         raise ValueError('Invalid method')
 
     # Compute L^2 distances
     row, col = edge_index
-    edge_attr = torch.norm(x[row] - x[col], dim=1, keepdim=True)  # Shape (E, 1)
+    distances = torch.norm(xy[row] - xy[col], dim=1, keepdim=True)  # Shape (E, 1)
+
+    # Compute angle differences
+    angle_diff = theta[col] - theta[row]  # Shape (E,)
+
+    # Compute cosine and sine of angle differences
+    cos_diff = torch.cos(2*torch.pi*angle_diff).unsqueeze(1)  # Shape (E, 1)
+    sin_diff = torch.sin(2*torch.pi*angle_diff).unsqueeze(1)  # Shape (E, 1)
+
+    # Concatenate all features
+    edge_attr = torch.cat([distances, cos_diff, sin_diff], dim=1)  # Shape (E, 3)
 
     return edge_index, edge_attr
 
