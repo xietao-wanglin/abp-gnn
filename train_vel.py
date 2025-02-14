@@ -6,6 +6,7 @@ import torch.nn as nn
 from torch.optim import AdamW
 from torch.optim.lr_scheduler import CosineAnnealingLR
 from torch.utils.data import DataLoader
+import wandb
 
 import numpy as np
 from tqdm import tqdm
@@ -17,6 +18,7 @@ from typing import Optional, List, Dict
 
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 dtype = torch.float
+wandb.login()
 
 def train(model: nn.Module, 
           train_simulation_list: List, 
@@ -65,7 +67,18 @@ def train(model: nn.Module,
     """
 
     if weights is None:
-        weights = torch.tensor([1, 0])
+        weights = torch.tensor([1, 1, 1], device=device)
+    
+    wandb.init(
+        project='ABP_GNN', 
+        config={
+            'lr': lr,
+            'n_epochs': n_epochs,
+            'weight_decay': weight_decay,
+            'model': str(model),
+            'loss_weights': weights
+        }
+    )
 
     os.makedirs(checkpoint_dir, exist_ok=True)
 
@@ -101,8 +114,6 @@ def train(model: nn.Module,
     optimizer = AdamW(model.parameters(), lr=lr, weight_decay=weight_decay)
     scheduler = CosineAnnealingLR(optimizer, T_max=n_epochs)
     criterion = nn.MSELoss(reduction='none')
-    weights = torch.tensor([1, 1, 1,], device=device)
-
     train_details = {
         'optimizer': str(optimizer),
         'scheduler': str(scheduler),
@@ -118,7 +129,13 @@ def train(model: nn.Module,
     
     history = {
         'train_loss': [],
+        'train_loss_x': [],
+        'train_loss_y': [],
+        'train_loss_theta': [],
         'val_loss': [],
+        'val_loss_x': [],
+        'val_loss_y': [],
+        'val_loss_theta': [],
         'best_val_loss': float('inf')
     }
 
@@ -133,29 +150,51 @@ def train(model: nn.Module,
     for epoch in range(initial_epoch, n_epochs+initial_epoch):
         model.train()
         train_losses = []
+        train_losses_x = []
+        train_losses_y = []
+        train_losses_theta = []
 
         pbar = tqdm(train_loader, desc=f'Epoch {epoch+1}/{n_epochs}')
-        for batch in pbar:
+        for batch_idx, batch in enumerate(pbar):
             batch_loss = 0
-            # Each batch contains a single (x, y) pair due to batch_size=1
-            for x, y, res, edge_index, edge_attr in batch:
-                x = x.transpose(0, 1).to(device)
-                y = y.transpose(0, 1).to(device) # Shape: (3, N) -> (N, 3)
+            batch_loss_x = 0
+            batch_loss_y = 0
+            batch_loss_theta = 0
+            for x, t, res, edge_index, edge_attr in batch:
+                x = x.transpose(0, 1).to(device)  # Shape: (3, N) -> (N, 3)
                 res = res.transpose(0, 1).to(device)
                 
                 predictions = model(x, edge_index, edge_attr)
 
-                loss = criterion(predictions, res)
-                loss = (weights*loss).mean()
-                
+                loss_x = (weights[0]*criterion(predictions[:, 0], res[:, 0])).mean()
+                loss_y = (weights[1]*criterion(predictions[:, 1], res[:, 1])).mean()
+                loss_theta = (weights[2]*criterion(predictions[:, 2], res[:, 2])).mean()
+                loss = (loss_x + loss_y + loss_theta)/3
+
                 optimizer.zero_grad()
                 loss.backward()
                 optimizer.step()
 
                 batch_loss += loss.item()
+                batch_loss_x += loss_x.item()
+                batch_loss_y += loss_y.item()
+                batch_loss_theta += loss_theta.item()
+
+                wandb.log(
+                    {'train_batch_loss': loss.item(), 
+                     'train_batch_loss_x': loss_x.item(), 
+                     'train_batch_loss_y': loss_y.item(), 
+                     'train_batch_loss_theta': loss_theta.item(), 
+                     'epoch': epoch, 
+                     'timestep': t, 
+                     'batch': batch_idx}
+                    )
             
             # Average loss over samples in batch (though batch_size=1 here)
             train_losses.append(batch_loss/len(batch))
+            train_losses_x.append(batch_loss_x/len(batch))
+            train_losses_y.append(batch_loss_y/len(batch))
+            train_losses_theta.append(batch_loss_theta/len(batch))
             
             pbar.set_postfix({'train_loss': f'{batch_loss:.6f}'})
         
@@ -163,28 +202,66 @@ def train(model: nn.Module,
         # Validation phase
         model.eval()
         val_losses = []
+        val_losses_x = []
+        val_losses_y = []
+        val_losses_theta = []
         with torch.no_grad():
             for batch in val_loader:
                 batch_loss = 0
+                batch_loss_x = 0
+                batch_loss_y = 0
+                batch_loss_theta = 0
                 for x, y, res, edge_index, edge_attr in batch:
                     x = x.transpose(0, 1).to(device)
-                    y = y.transpose(0, 1).to(device)
                     res = res.transpose(0, 1).to(device)
 
                     predictions = model(x, edge_index, edge_attr)
 
-                    loss = criterion(predictions, res)
-                    loss = (weights*loss).mean()
+                    loss_x = (weights[0]*criterion(predictions[:, 0], res[:, 0])).mean()
+                    loss_y = (weights[1]*criterion(predictions[:, 1], res[:, 1])).mean()
+                    loss_theta = (weights[2]*criterion(predictions[:, 2], res[:, 2])).mean()
+                    loss = (loss_x + loss_y + loss_theta)/3
                     
                     batch_loss += loss.item()
+                    batch_loss_x += loss_x.item()
+                    batch_loss_y += loss_y.item()
+                    batch_loss_theta += loss_theta.item()
                 
                 val_losses.append(batch_loss/len(batch))
+                val_losses_x.append(batch_loss_x/len(batch))
+                val_losses_y.append(batch_loss_y/len(batch))
+                val_losses_theta.append(batch_loss_theta/len(batch))
         
         avg_train_loss = np.mean(train_losses)
+        avg_train_loss_x = np.mean(train_losses_x)
+        avg_train_loss_y = np.mean(train_losses_y)
+        avg_train_loss_theta = np.mean(train_losses_theta)
         avg_val_loss = np.mean(val_losses)
+        avg_val_loss_x = np.mean(val_losses_x)
+        avg_val_loss_y = np.mean(val_losses_y)
+        avg_val_loss_theta = np.mean(val_losses_theta)
         
         history['train_loss'].append(avg_train_loss)
+        history['train_loss_x'].append(avg_train_loss_x)
+        history['train_loss_y'].append(avg_train_loss_y)
+        history['train_loss_theta'].append(avg_train_loss_theta)
         history['val_loss'].append(avg_val_loss)
+        history['val_loss_x'].append(avg_val_loss_x)
+        history['val_loss_y'].append(avg_val_loss_y)
+        history['val_loss_theta'].append(avg_val_loss_theta)
+
+        wandb.log({
+            'epoch': epoch + 1,
+            'train_loss': avg_train_loss,
+            'train_loss_x': avg_train_loss_x,
+            'train_loss_y': avg_train_loss_y,
+            'train_loss_theta': avg_train_loss_theta,
+            'val_loss': avg_val_loss,
+            'val_loss_x': avg_val_loss_x,
+            'val_loss_y': avg_val_loss_y,
+            'val_loss_theta': avg_val_loss_theta,
+            'lr': scheduler.get_last_lr()[0]
+        })
         
         if avg_val_loss < history['best_val_loss']:
             checkpoint_path = os.path.join(checkpoint_dir, f'best_model.pt')
@@ -197,6 +274,7 @@ def train(model: nn.Module,
                 'train_loss': avg_train_loss,
                 'val_loss': avg_val_loss
             }, checkpoint_path)
+            wandb.save(checkpoint_path)
         
         if (epoch + 1) % checkpoint_every == 0:
             checkpoint_path = os.path.join(checkpoint_dir, f'model_epoch_{epoch+1}.pt')
@@ -208,22 +286,36 @@ def train(model: nn.Module,
                 'train_loss': avg_train_loss,
                 'val_loss': avg_val_loss,
             }, checkpoint_path)
+            wandb.save(checkpoint_path)
         
         print(f'\nEpoch {epoch+1}/{n_epochs}')
         print(f'Train Loss: {avg_train_loss:.6f}')
+        print(f'Train Loss (x): {avg_train_loss_x:.6f}')
+        print(f'Train Loss (y): {avg_train_loss_y:.6f}')
+        print(f'Train Loss (theta): {avg_train_loss_theta:.6f}')
         print(f'Val Loss: {avg_val_loss:.6f}')
+        print(f'Val Loss (x): {avg_val_loss_x:.6f}')
+        print(f'Val Loss (y): {avg_val_loss_y:.6f}')
+        print(f'Val Loss (theta): {avg_val_loss_theta:.6f}')
         print('-' * 30)
     
         history_path = os.path.join(checkpoint_dir, f'{hist_filename}.json')
         with open(history_path, 'w') as f:
             json.dump({
                 'train_loss': history['train_loss'],
+                'train_loss_x': history['train_loss_x'],
+                'train_loss_y': history['train_loss_y'],
+                'train_loss_theta': history['train_loss_theta'],
                 'val_loss': history['val_loss'],
+                'val_loss_x': history['val_loss_x'],
+                'val_loss_y': history['val_loss_y'],
+                'val_loss_theta': history['val_loss_theta'],
                 'best_val_loss': history['best_val_loss']
             }, f, indent=4)
         
         print(f'Training history saved to {history_path}')
     
+    wandb.finish()
     return history
 
 def evaluate_model(model: nn.Module, 
@@ -295,7 +387,7 @@ if __name__ == '__main__':
     model = GAT_vel(
         n_layers=3,
         in_node_nf=3,
-        in_edge_nf=3,
+        in_edge_nf=1,
         hidden_nf=64,
         dropout=0,
         device=device,

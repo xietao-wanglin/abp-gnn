@@ -168,7 +168,7 @@ def process_simulation_data(simulation_list: List,
             x_periodic = transformed_sim[t] # (6, N)
             edge_index, edge_attr = compute_graph(x_periodic, method=cluster_method, p=p, device=device)
 
-            data_pairs.append((x, y, (y-x), edge_index, edge_attr))
+            data_pairs.append((x, t, (y-x), edge_index, edge_attr))
     
     return data_pairs
 
@@ -199,7 +199,7 @@ def compute_graph(x: torch.Tensor,
     xy, theta = x[:-1], x[-1]
     xy = xy.transpose(0, 1)
     if method == 'radius':
-        edge_index = radius_graph(xy, r=p).to(device)
+        edge_index = radius_graph(xy, r=p, max_num_neighbors=1000).to(device)
     elif method == 'knn':
         edge_index = knn_graph(xy, k=p).to(device)  # Shape (2, E)
     else:
@@ -213,11 +213,12 @@ def compute_graph(x: torch.Tensor,
     angle_diff = theta[col] - theta[row]  # Shape (E,)
 
     # Compute cosine and sine of angle differences
-    cos_diff = torch.cos(2*torch.pi*angle_diff).unsqueeze(1)  # Shape (E, 1)
-    sin_diff = torch.sin(2*torch.pi*angle_diff).unsqueeze(1)  # Shape (E, 1)
+    #cos_diff = torch.cos(2*torch.pi*angle_diff).unsqueeze(1)  # Shape (E, 1)
+    #sin_diff = torch.sin(2*torch.pi*angle_diff).unsqueeze(1)  # Shape (E, 1)
 
     # Concatenate all features
-    edge_attr = torch.cat([distances, cos_diff, sin_diff], dim=1)  # Shape (E, 3)
+    #edge_attr = torch.cat([distances, cos_diff, sin_diff], dim=1)  # Shape (E, 3)
+    edge_attr = distances
 
     return edge_index, edge_attr
 
