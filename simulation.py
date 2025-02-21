@@ -40,6 +40,7 @@ class Simulation:
         self.positions[0] = initial_state
         self.pos_absolute = np.zeros(shape=(self.timesteps, 3, self.N))
         self.pos_absolute[0] = initial_state
+        self.derivatives = np.zeros(shape=(self.timesteps-1, 3, self.N))
         self.times = np.arange(0, self.delta_t*self.timesteps, self.delta_t)
 
     def particle_system(self, t, positions):
@@ -53,7 +54,7 @@ class Simulation:
         dx = x[:, None] - x[None, :]
         dy = y[:, None] - y[None, :]
         dx = dx - self.L_box * np.round(dx/self.L_box)  # Periodic boundary for x
-        dy = dy - self.L_box  * np.round(dy/self.L_box)  # Periodic boundary for y
+        dy = dy - self.L_box * np.round(dy/self.L_box)  # Periodic boundary for y
         distances = np.sqrt(dx**2 + dy**2)
 
         neighbor_mask = (distances < self.couple_radius) & (distances > 0)
@@ -76,20 +77,22 @@ class Simulation:
     def solve_dynamics(self, method: Optional[str] = 'RK45'):
 
         for i, t in enumerate(tqdm(self.times[:-1], leave=False, desc='Simulation')):
-            sol = solve_ivp(self.particle_system, 
-                            t_span=(t, t+self.delta_t), 
-                            y0=self.positions[i].T.reshape(3*self.N),
-                            t_eval=[t+self.delta_t], 
-                            method=method)
-            next_state = sol.y[:, -1]
+            derivatives = self.particle_system(t, self.positions[i].T.reshape(3*self.N))
+            if method == 'Euler':
+                next_state = self.positions[i].T.reshape(3*self.N) + self.delta_t * derivatives
+            else:
+                sol = solve_ivp(self.particle_system, 
+                                t_span=(t, t+self.delta_t), 
+                                y0=self.positions[i].T.reshape(3*self.N),
+                                t_eval=[t+self.delta_t], 
+                                method=method)
+                next_state = sol.y[:, -1]
             self.pos_absolute[i+1] = next_state.reshape(self.N, 3).T
             next_state = self.apply_periodic_boundary(next_state)
             self.positions[i+1] = next_state.reshape(self.N, 3).T
+            self.derivatives[i] = derivatives.reshape(self.N, 3).T
     
-    def get_solution(self):
-        return self.times, self.positions
-    
-    def create_animation(self, filename: Optional[str] = None):
+    def create_animation(self, timesteps: Optional[int] = 100, filename: Optional[str] = None):
         times, positions = self.get_solution()
         f = plt.figure(figsize=(6, 5))
         ax = f.add_subplot(111)
@@ -107,10 +110,16 @@ class Simulation:
             
             f.canvas.draw_idle()
 
-        animation = FuncAnimation(f, update, interval=50, frames=100)
+        animation = FuncAnimation(f, update, interval=50, frames=timesteps)
         if filename is not None:
             animation.save(f'./videos/{filename}', writer='ffmpeg', fps=20)
         plt.show()
 
+    def get_solution(self):
+        return self.times, self.positions
+    
     def get_solution_abs(self):
         return self.times, self.pos_absolute
+    
+    def get_derivatives(self):
+        return self.times, self.derivatives

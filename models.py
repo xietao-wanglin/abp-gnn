@@ -26,7 +26,6 @@ SOFTWARE.
 from torch import nn
 import torch
 import torch.nn.functional as F
-from utilities import NormalizeOutput
 from torch_geometric.nn import GATv2Conv
 
 def aggregate(message, row_index, n_node, aggr='sum', mask=None):
@@ -275,50 +274,6 @@ class GNN_Layer(nn.Module):
 
         return h
 
-class GNN(nn.Module):
-    def __init__(self, n_layers, 
-                 in_node_nf, 
-                 in_edge_nf, 
-                 hidden_nf, 
-                 activation=nn.SiLU(), 
-                 device='cpu', 
-                 flat=False, 
-                 dropout=0.1, 
-                 norm=True,
-                 force_circle=True):
-        super(GNN, self).__init__()
-        self.layers = nn.ModuleList()
-        self.n_layers = n_layers
-        self.norm = norm
-        self.dropout = nn.Dropout(dropout) if dropout > 0 else None
-        self.norm_layers = nn.ModuleList([nn.LayerNorm(hidden_nf) for _ in range(n_layers)]) if norm else None
-        # input feature mapping
-        self.embedding = nn.Linear(in_node_nf, hidden_nf)
-        for i in range(self.n_layers):
-            layer = GNN_Layer(in_edge_nf, hidden_nf, activation=activation, flat=flat, dropout=dropout, norm=norm)
-            self.layers.append(layer)
-        self.decoder = nn.Sequential(
-            nn.Linear(hidden_nf, hidden_nf),
-            activation,
-            nn.Dropout(dropout) if dropout else nn.Identity(),
-            nn.Linear(hidden_nf, 6)
-        )
-        self.to(device)
-        self.normalize = NormalizeOutput() if force_circle else None
-
-    def forward(self, h, edge_index, edge_fea):
-        h = self.embedding(h)
-        for i in range(self.n_layers):
-            h = self.layers[i](h, edge_index, edge_fea)
-            if self.norm:
-                h = self.norm_layers[i](h)
-            if self.dropout:
-                h = self.dropout(h)
-        h = self.decoder(h)
-        if self.normalize:
-            h = self.normalize(h)
-        return h
-
 class Linear_dynamics(nn.Module):
     def __init__(self, device='cpu'):
         super(Linear_dynamics, self).__init__()
@@ -423,7 +378,7 @@ class GATLayer(nn.Module):
                              edge_dim=edge_dim)
         self.activation = activation
         self.norm = nn.LayerNorm(out_features) if norm else None
-        self.dropout = nn.Dropout(dropout) if dropout else None
+        self.dropout = nn.Dropout(dropout) if dropout > 0.0 else None
     
     def forward(self, x, edge_index, edge_attr):
         x = self.gat(x, edge_index, edge_attr)
@@ -435,48 +390,7 @@ class GATLayer(nn.Module):
             x = self.dropout(x)
         return x
 
-class GAT(nn.Module):
-    def __init__(self, n_layers, in_node_nf, 
-                 hidden_nf, heads=1, edge_dim=1,
-                 activation=nn.SiLU(), device='cpu', dropout=0.1, norm=True, force_circle=True):
-        super(GAT, self).__init__()
-        self.n_layers = n_layers
-        self.norm = norm
-        self.embedding = nn.Linear(in_node_nf, hidden_nf)
-        self.edge_embedding = nn.Sequential(
-            nn.Linear(edge_dim, edge_dim),
-            activation
-        )
-        self.layers = nn.ModuleList()
-        for _ in range(n_layers):
-            self.layers.append(GATLayer(hidden_nf, 
-                                        hidden_nf, 
-                                        edge_dim=edge_dim,
-                                        heads=heads, 
-                                        activation=activation, 
-                                        dropout=dropout, 
-                                        norm=norm,
-                                        concat=True))
-        self.decoder = nn.Sequential(
-            nn.Linear(hidden_nf, hidden_nf),
-            activation,
-            nn.Dropout(dropout) if dropout else nn.Identity(),
-            nn.Linear(hidden_nf, 6)
-        )
-        self.normalize = NormalizeOutput() if force_circle else None
-        self.to(device)
-    
-    def forward(self, x, edge_index, edge_attr):
-        x = self.embedding(x)
-        edge_attr = self.edge_embedding(edge_attr)
-        for layer in self.layers:
-            x = layer(x, edge_index, edge_attr)
-        x = self.decoder(x)
-        if self.normalize:
-            x = self.normalize(x)
-        return x
-
-class GNN_vel(nn.Module):
+class GNN(nn.Module):
     def __init__(self, n_layers, 
                  in_node_nf, 
                  in_edge_nf, 
@@ -486,7 +400,7 @@ class GNN_vel(nn.Module):
                  flat=False, 
                  dropout=0.1, 
                  norm=True,):
-        super(GNN_vel, self).__init__()
+        super(GNN, self).__init__()
         self.layers = nn.ModuleList()
         self.n_layers = n_layers
         self.norm = norm
@@ -501,7 +415,7 @@ class GNN_vel(nn.Module):
             nn.Linear(hidden_nf, hidden_nf),
             activation,
             nn.Dropout(dropout) if dropout else nn.Identity(),
-            nn.Linear(hidden_nf, 3)
+            nn.Linear(hidden_nf, 1)
         )
         self.to(device)
 
@@ -516,11 +430,11 @@ class GNN_vel(nn.Module):
         h = self.decoder(h)
         return h
 
-class GAT_vel(nn.Module):
+class GAT(nn.Module):
     def __init__(self, n_layers, in_node_nf, 
                  hidden_nf, heads=4, in_edge_nf=0,
                  activation=nn.SiLU(), device='cpu', dropout=0.0, norm=True):
-        super(GAT_vel, self).__init__()
+        super(GAT, self).__init__()
         self.n_layers = n_layers
         self.norm = norm
         self.embedding = nn.Linear(in_node_nf, hidden_nf)
@@ -541,8 +455,8 @@ class GAT_vel(nn.Module):
         self.decoder = nn.Sequential(
             nn.Linear(hidden_nf, hidden_nf),
             activation,
-            nn.Dropout(dropout) if dropout else nn.Identity(),
-            nn.Linear(hidden_nf, 3)
+            nn.Dropout(dropout) if dropout > 0.0 else nn.Identity(),
+            nn.Linear(hidden_nf, 1)
         )
         self.to(device)
     

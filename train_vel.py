@@ -1,4 +1,4 @@
-from models import GNN_vel, GAT_vel
+from models import GNN, GAT
 from utilities import process_simulation_data, ParticleDataset, collate_fn
 
 import torch
@@ -7,6 +7,7 @@ from torch.optim import AdamW
 from torch.optim.lr_scheduler import CosineAnnealingLR
 from torch.utils.data import DataLoader
 import wandb
+from torch_scatter import scatter_add
 
 import numpy as np
 from tqdm import tqdm
@@ -42,23 +43,31 @@ def train(model: nn.Module,
     Parameters
     ----------
     model: nn.Module
-        GNN model instance.
+        Model instance.
     train_simulation_list: List
         List of train simulation arrays.
     test_simulation_list: List
         List of test simulation arrays.
+    cluster_method: str
+        Graph creation method, either 'radius' or 'knn'.
+    cluster_parameter: float or int
+        Parameter used in `cluster_method`.
     n_epochs: int, optional
         Number of epochs to train, default is 100.
     lr: float, optional
         Learning rate of AdamW optimiser, default is 5e-4.
     weight_decay: float, optional
         Weight decay of AdamW optimiser, default is 1e-4.
-    device: str, optional
+    device: str or torch.device, optional
         Either 'cpu', 'cuda' or torch.device instance, default is 'cpu'.
     checkpoint_dir: str, optional 
         Directory to save checkpoints, default is 'checkpoints'.
     checkpoint_every: int, optional
         Save checkpoint every N epochs, default is 10.
+    hist_filename: str, optional
+        Name of training history JSON file, defualt is 'training history'.
+    subset: bool, optional
+        If True, use a subset of the trajectories instead of full simulations.
     
     Returns
     -------
@@ -162,14 +171,26 @@ def train(model: nn.Module,
             batch_loss_theta = 0
             for x, t, res, edge_index, edge_attr in batch:
                 x = x.transpose(0, 1).to(device)  # Shape: (3, N) -> (N, 3)
-                res = res.transpose(0, 1).to(device)
+                res = res.transpose(0, 1).to(device) # Range: [0, 1] x [0, 1] x [0, 2pi]
                 
                 predictions = model(x, edge_index, edge_attr)
+    
+                # Initialize output tensor with ones since T(i) starts with 1
+                source, target = edge_index  # source = j, target = i
 
-                loss_x = (weights[0]*criterion(predictions[:, 0], res[:, 0])).mean()
-                loss_y = (weights[1]*criterion(predictions[:, 1], res[:, 1])).mean()
-                loss_theta = (weights[2]*criterion(predictions[:, 2], res[:, 2])).mean()
-                loss = (loss_x + loss_y + loss_theta)/3
+                # Aggregate edge features h_{ij} for each target node i
+                agg_h = scatter_add(edge_attr, target, dim=0, dim_size=x.shape[0])
+
+                # Compute T(i)
+                T = 1 + 0.1 * agg_h
+                T[agg_h == 0] = 1
+                
+                loss_x = (weights[0]*criterion(predictions.squeeze(), res[:, 0])).mean()
+                loss_x = criterion(predictions, T).mean()
+                loss_y = (weights[1]*criterion(predictions.squeeze(), res[:, 1])).mean()
+                loss_y = criterion(res[:, 2].squeeze(), T.squeeze()).mean()
+                loss_theta = (weights[2]*criterion(predictions.squeeze(), res[:, 2])).mean()
+                loss = (loss_x + 0*loss_y + 0*loss_theta)/3
 
                 optimizer.zero_grad()
                 loss.backward()
@@ -217,9 +238,9 @@ def train(model: nn.Module,
 
                     predictions = model(x, edge_index, edge_attr)
 
-                    loss_x = (weights[0]*criterion(predictions[:, 0], res[:, 0])).mean()
-                    loss_y = (weights[1]*criterion(predictions[:, 1], res[:, 1])).mean()
-                    loss_theta = (weights[2]*criterion(predictions[:, 2], res[:, 2])).mean()
+                    loss_x = (weights[0]*criterion(predictions.squeeze(), res[:, 0])).mean()
+                    loss_y = (weights[1]*criterion(predictions.squeeze(), res[:, 1])).mean()
+                    loss_theta = (weights[2]*criterion(predictions.squeeze(), res[:, 2])).mean()
                     loss = (loss_x + loss_y + loss_theta)/3
                     
                     batch_loss += loss.item()
@@ -368,36 +389,36 @@ def evaluate_model(model: nn.Module,
 
 if __name__ == '__main__':
 
-    train_glob = glob('./data_abs/simulation_train_*')[:1000]
+    train_glob = glob('./data_euler/simulation_train_*')[:1000]
     train_simulations = [np.load(sim) for sim in train_glob]
 
-    test_glob = glob('./data_abs/simulation_test_*')[:200]
+    test_glob = glob('./data_euler/simulation_test_*')[:200]
     test_simulations = [np.load(sim) for sim in test_glob]
 
-    model = GNN_vel(
-        n_layers=3,
-        in_node_nf=3,
-        in_edge_nf=2,
-        hidden_nf=64,
-        dropout=0,
-        device=device,
-        norm=True
-    ).to(dtype=dtype)
-
-    model = GAT_vel(
+    model = GNN(
         n_layers=3,
         in_node_nf=3,
         in_edge_nf=1,
         hidden_nf=64,
         dropout=0,
         device=device,
-        norm=True
+        norm=False
     ).to(dtype=dtype)
+
+#    model = GAT(
+#        n_layers=3,
+#        in_node_nf=3,
+#        in_edge_nf=1,
+#        hidden_nf=128,
+#        dropout=0,
+#        device=device,
+#        norm=True
+#    ).to(dtype=dtype)
 
     history = train(
         model=model,
         cluster_method='radius',
-        cluster_parameter=0.63,
+        cluster_parameter=0.1,
         batch_size=1,
         train_simulation_list=train_simulations,
         test_simulation_list=test_simulations,
@@ -406,6 +427,7 @@ if __name__ == '__main__':
         weight_decay=1e-4,
         subset=True,
         device=device,
+        weights=torch.tensor([0, 0, 1])
     )
 
     #test_mse = evaluate_model(model, test_simulations, device=device, cluster_method='radius', cluster_parameter=0.6)

@@ -1,6 +1,6 @@
 # Simulation of Active Brownian Particles with Graph Neural Networks
 
-The project has been tested with Python 3.12.2 and Python 3.12.8 on Linux.
+The project has been tested with Python 3.12.2 and Python 3.12.9 on Linux.
 
 ## Using the project
 
