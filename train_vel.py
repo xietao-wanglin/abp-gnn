@@ -176,21 +176,21 @@ def train(model: nn.Module,
                 predictions = model(x, edge_index, edge_attr)
     
                 # Initialize output tensor with ones since T(i) starts with 1
-                source, target = edge_index  # source = j, target = i
+                #source, target = edge_index  # source = j, target = i
 
                 # Aggregate edge features h_{ij} for each target node i
-                agg_h = scatter_add(edge_attr, target, dim=0, dim_size=x.shape[0])
+                #agg_h = scatter_add(edge_attr, target, dim=0, dim_size=x.shape[0])
 
                 # Compute T(i)
-                T = 1 + 0.1 * agg_h
-                T[agg_h == 0] = 1
+                #T = 1 + 0.1 * agg_h
+                #T[agg_h == 0] = 1
                 
                 loss_x = (weights[0]*criterion(predictions.squeeze(), res[:, 0])).mean()
-                loss_x = criterion(predictions, T).mean()
+                #loss_x = criterion(predictions, T).mean()
                 loss_y = (weights[1]*criterion(predictions.squeeze(), res[:, 1])).mean()
-                loss_y = criterion(res[:, 2].squeeze(), T.squeeze()).mean()
+                #loss_y = criterion(res[:, 2].squeeze(), T.squeeze()).mean()
                 loss_theta = (weights[2]*criterion(predictions.squeeze(), res[:, 2])).mean()
-                loss = (loss_x + 0*loss_y + 0*loss_theta)/3
+                loss = (0*loss_x + 0*loss_y + loss_theta)/3
 
                 optimizer.zero_grad()
                 loss.backward()
@@ -396,10 +396,10 @@ if __name__ == '__main__':
     test_simulations = [np.load(sim) for sim in test_glob]
 
     model = GNN(
-        n_layers=3,
+        n_layers=6,
         in_node_nf=3,
         in_edge_nf=1,
-        hidden_nf=64,
+        hidden_nf=128,
         dropout=0,
         device=device,
         norm=False
@@ -417,8 +417,8 @@ if __name__ == '__main__':
 
     history = train(
         model=model,
-        cluster_method='radius',
-        cluster_parameter=0.1,
+        cluster_method='knn',
+        cluster_parameter=4,
         batch_size=1,
         train_simulation_list=train_simulations,
         test_simulation_list=test_simulations,

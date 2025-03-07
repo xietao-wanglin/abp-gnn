@@ -5,11 +5,28 @@ from torch_cluster import knn_graph
 
 from typing import Optional, List, Tuple
 
-def apply_periodic_boundary(positions):
+def apply_periodic_boundary(positions: torch.Tensor, dims: Optional[List] = None) -> torch.Tensor:
+    """
+    Applies periodic conditions in three dimensions.
+
+    Parameters
+    ----------
+    positions: torch.Tensor
+        Position Tensor.
+    dims: list, optional
+        The dimensions of the periodic box, default is None.
+
+    Returns
+    -------
+    positions: torch.Tensor
+        Position Tensor after applying boundary conditions.
+    """
+    if dims is None:
+        dims = [1.0, 1.0, 2*torch.pi]
     pos = positions.clone()
-    pos[0] = pos[0] % 1.0
-    pos[1] = pos[1] % 1.0
-    pos[2] = pos[2] % (2*torch.pi)
+    pos[0] = pos[0] % dims[0]
+    pos[1] = pos[1] % dims[1]
+    pos[2] = pos[2] % dims[2]
     return pos
 
 def process_simulation_data(simulation_list: List, 

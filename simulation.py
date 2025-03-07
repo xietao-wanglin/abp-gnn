@@ -101,7 +101,7 @@ class Simulation:
         ax.set_xlabel(r'$x$')
         ax.set_ylabel(r'$y$')
         ax.set_title(r'Time: 0.0')
-        points = ax.scatter(positions[0][0], positions[0][1], c=positions[0][2], vmin=0, vmax=2*np.pi, alpha=0.3)
+        points = ax.scatter(positions[0][0], positions[0][1], c=positions[0][2], vmin=0, vmax=2*np.pi, alpha=0.3, cmap='twilight')
         f.colorbar(points, label=r'Orientation $\theta_i$')
         def update(fn):
             ax.set_title(fr'Time: {times[fn]:2f}')
@@ -123,3 +123,45 @@ class Simulation:
     
     def get_derivatives(self):
         return self.times, self.derivatives
+
+class InfiniteSimulation(Simulation):
+    
+    def __init__(self, N: Optional[int] = 8,
+                 v0: Optional[float] = 1.0,
+                 rot_rate: Optional[np.ndarray | int] = None,
+                 rot_couple: Optional[float] = 0.1,
+                 L_box: Optional[float] = 1.0,
+                 timesteps: Optional[int] = 100,
+                 delta_t: Optional[float] = 0.1,
+                 seed: Optional[int] = 0):
+        super().__init__(N=N, v0=v0, rot_rate=rot_rate, rot_couple=rot_couple,
+                         couple_radius=np.inf, L_box=L_box, timesteps=timesteps,
+                         delta_t=delta_t, seed=seed)
+        
+    def particle_system(self, t, positions):
+        positions = positions.reshape(self.N, 3).T
+        x = positions[0]
+        y = positions[1]
+        theta = positions[2]
+        dxdt = self.v0*np.cos(theta)
+        dydt = self.v0*np.sin(theta)
+
+        dx = x[:, None] - x[None, :]
+        dy = y[:, None] - y[None, :]
+        dx = dx - self.L_box * np.round(dx/self.L_box)  # Periodic boundary for x
+        dy = dy - self.L_box * np.round(dy/self.L_box)  # Periodic boundary for y
+        distances = np.sqrt(dx**2 + dy**2)
+
+        weights = 1/(distances**3 + 1e-10)
+        # Set self-interaction weights to zero (diagonal elements)
+        np.fill_diagonal(weights, 0)
+        weight_sums = np.sum(weights, axis=1, keepdims=True)
+        weights = weights/weight_sums
+
+        interaction = np.sum(
+             weights * np.sin(theta[None, :] - theta[:, None]), axis=1
+        )
+
+        dthetadt = self.rot_rate + self.rot_couple * interaction
+        derivative = np.vstack([dxdt, dydt, dthetadt])
+        return derivative.T.reshape(3*self.N)
