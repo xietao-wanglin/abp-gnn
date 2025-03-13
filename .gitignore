@@ -177,9 +177,14 @@ cython_debug/
 # Data
 *.npy
 *.json
+*.csv
+*.dat
 
 # Notebooks
 *.ipynb
 
 # Models
 *.pt
+
+# wandb
+/wandb
