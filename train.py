@@ -115,7 +115,7 @@ def train(model: nn.Module,
     )
     
     optimizer = AdamW(model.parameters(), lr=lr, weight_decay=weight_decay)
-    scheduler = CosineAnnealingLR(optimizer, T_max=n_epochs)
+    scheduler = CosineAnnealingLR(optimizer, T_max=50)
     criterion = nn.MSELoss(reduction='none')
     train_details = {
         'optimizer': str(optimizer),
@@ -156,7 +156,7 @@ def train(model: nn.Module,
                 res = res.transpose(0, 1).to(device) # Range: [0, 1] x [0, 1] x [0, 2pi]
                 
                 predictions = model(x, edge_index, edge_attr)
-                loss = criterion(predictions.squeeze(), res[:, 2]).mean()
+                loss = criterion(predictions.squeeze(), res).mean()
 
                 optimizer.zero_grad()
                 loss.backward()
@@ -186,7 +186,7 @@ def train(model: nn.Module,
                     res = res.transpose(0, 1).to(device)
 
                     predictions = model(x, edge_index, edge_attr)
-                    loss = criterion(predictions.squeeze(), res[:, 2]).mean()
+                    loss = criterion(predictions.squeeze(), res).mean()
                     
                     batch_loss += loss.item()
                 
@@ -249,10 +249,10 @@ def train(model: nn.Module,
 
 if __name__ == '__main__':
 
-    train_glob = glob('./data_euler/simulation_train_*')[:1000]
+    train_glob = glob('./data_inf/simulation_train_*')[:1000]
     train_simulations = [np.load(sim) for sim in train_glob]
 
-    test_glob = glob('./data_euler/simulation_test_*')[:200]
+    test_glob = glob('./data_inf/simulation_test_*')[:200]
     test_simulations = [np.load(sim) for sim in test_glob]
 
     model = GNN(
@@ -265,10 +265,19 @@ if __name__ == '__main__':
         norm=False
     ).to(dtype=dtype)
 
+    model = GAT(
+        n_layers=5,
+        in_node_nf=3,
+        in_edge_nf=1,
+        heads=8,
+        hidden_nf=128,
+        norm=False,
+    )
+
     history = train(
         model=model,
-        cluster_method='radius',
-        cluster_parameter=0.1,
+        cluster_method='knn',
+        cluster_parameter=4,
         batch_size=1,
         train_simulation_list=train_simulations,
         test_simulation_list=test_simulations,
