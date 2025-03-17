@@ -152,7 +152,7 @@ class InfiniteSimulation(Simulation):
         dy = dy - self.L_box * np.round(dy/self.L_box)  # Periodic boundary for y
         distances = np.sqrt(dx**2 + dy**2)
 
-        weights = 1/(distances**3 + 1e-10)
+        weights = 1/(distances**1 + 1e-10)
         # Set self-interaction weights to zero (diagonal elements)
         np.fill_diagonal(weights, 0)
         weight_sums = np.sum(weights, axis=1, keepdims=True)
@@ -161,6 +161,77 @@ class InfiniteSimulation(Simulation):
         interaction = np.sum(
              weights * np.sin(theta[None, :] - theta[:, None]), axis=1
         )
+
+        dthetadt = self.rot_rate + self.rot_couple * interaction
+        derivative = np.vstack([dxdt, dydt, dthetadt])
+        return derivative.T.reshape(3*self.N)
+    
+class StiffSimulation(Simulation):
+
+    def __init__(self, N: Optional[int] = 8,
+                 v0: Optional[float] = 1.0,
+                 rot_rate: Optional[np.ndarray | int] = None,
+                 rot_couple: Optional[float] = 0.1,
+                 couple_radius: Optional[float] = 0.1,
+                 epsilon: Optional[float] = 0.1,
+                 sigma: Optional[float] = 0.01,
+                 L_box: Optional[float] = 1.0,
+                 timesteps: Optional[int] = 100,
+                 delta_t: Optional[float] = 0.1,
+                 seed: Optional[int] = 0):
+        super().__init__(N=N, v0=v0, rot_rate=rot_rate, rot_couple=rot_couple,
+                         couple_radius=couple_radius, L_box=L_box, timesteps=timesteps,
+                         delta_t=delta_t, seed=seed)
+        self.epsilon = epsilon
+        self.sigma = sigma
+    
+    def repulsion(self, dx, dy, r_cutoff=np.inf):
+        """
+        Computes respulsion forces for all particle pairs.
+        """
+        distances = np.sqrt(dx**2 + dy**2)
+
+        mask = (distances < r_cutoff) & (distances > 0)
+        
+        inv_r = 1.0 / distances[mask]
+        inv_r6 = (self.sigma * inv_r) ** 6
+        inv_r12 = inv_r6 ** 2
+        F_mag = 4 * self.epsilon * (12 * inv_r12 + 6 * inv_r6) * inv_r
+
+        Fx = np.zeros_like(distances)
+        Fy = np.zeros_like(distances)
+        Fx[mask] = F_mag * dx[mask]
+        Fy[mask] = F_mag * dy[mask]
+
+        Fx_total = np.sum(Fx, axis=1)
+        Fy_total = np.sum(Fy, axis=1)
+
+        return Fx_total, Fy_total
+        
+    def particle_system(self, t, positions):
+        positions = positions.reshape(self.N, 3).T
+        x = positions[0]
+        y = positions[1]
+        theta = positions[2]
+        dxdt = self.v0*np.cos(theta)
+        dydt = self.v0*np.sin(theta)
+
+        dx = x[:, None] - x[None, :]
+        dy = y[:, None] - y[None, :]
+        dx = dx - self.L_box * np.round(dx/self.L_box)  # Periodic boundary for x
+        dy = dy - self.L_box * np.round(dy/self.L_box)  # Periodic boundary for y
+        distances = np.sqrt(dx**2 + dy**2)
+
+        neighbor_mask = (distances < self.couple_radius) & (distances > 0)
+
+        interaction = np.sum(
+            neighbor_mask * np.sin(theta[None, :] - theta[:, None]), axis=1
+        )
+
+        Fx_total, Fy_total = self.repulsion(dx, dy)
+
+        dxdt += Fx_total
+        dydt += Fy_total
 
         dthetadt = self.rot_rate + self.rot_couple * interaction
         derivative = np.vstack([dxdt, dydt, dthetadt])
