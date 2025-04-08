@@ -1,8 +1,11 @@
 import torch
+from torch import nn
 from torch.utils.data import Dataset
 from torch_cluster import knn_graph
 
 from typing import Optional, List, Tuple
+
+from simulation import Simulation, StiffSimulation
 
 def apply_periodic_boundary(positions: torch.Tensor, dims: Optional[List] = None) -> torch.Tensor:
     """
@@ -73,19 +76,25 @@ def process_simulation_data(simulation_list: List,
         
         # Choose steps pairs
         if subset:
-            timesteps = torch.randint(0, num_timesteps, size=(min(n_samples, num_timesteps),))
+            timesteps = torch.randint(1, num_timesteps, size=(min(n_samples, num_timesteps),))
         else:
-            timesteps = range(num_timesteps)
+            timesteps = range(1, num_timesteps) # Avoid step 1 as it is usually complete non-sense
 
         for t in timesteps:
             x = sim[t]
             y = sim[t+1]
 
-            x = apply_periodic_boundary(x) # Ensure [0, 1] x [0, 1] x [0, 2pi]
+            x_bounded = apply_periodic_boundary(x) # Ensure [0, 1] x [0, 1] x [0, 2pi]
 
-            edge_index, edge_attr = compute_graph(x, method=cluster_method, p=p, device=device)
+            N = x[0].shape[0]
 
-            data_pairs.append((x, t, (y-x)/0.1, edge_index, edge_attr))
+            edge_index, edge_attr = compute_graph(x_bounded, method=cluster_method, p=p, device=device)
+
+            #simulation = StiffSimulation(N=N, v0=0.1, L_box=1.0, delta_t=0.1, rot_couple=0, sigma=0.025, rot_rate=1,)
+
+            #derivatives = simulation.particle_system(t, x_bounded.numpy().T.reshape(N*3)).reshape(N, 3).T
+
+            data_pairs.append((x_bounded, t, y, edge_index, edge_attr))
     
     return data_pairs
 
@@ -99,7 +108,7 @@ def compute_graph(x: torch.Tensor,
     Parameters
     ----------
     x: torch.Tensor
-        Node features of shape (3, N).
+        Postions (x, y, theta) of shape (3, N).
     method: str
         Either 'radius' for radial graph or 'knn' for knn graph.
     p: float or int, optional
@@ -139,8 +148,14 @@ def compute_graph(x: torch.Tensor,
     row, col = edge_index
     angle_diff = theta[row] - theta[col] 
     sin_diff = torch.sin(angle_diff).unsqueeze(1)
-    edge_attr = sin_diff
-
+    #rel_pos_raw = xy[row] - xy[col]
+    #rel_pos = rel_pos_raw - torch.round(rel_pos_raw)
+    #rel_dist = torch.norm(rel_pos, dim=-1, keepdim=True)
+    #rel_encoding = torch.cat([rel_pos, rel_dist], dim=-1)
+    #edge_attr = torch.cat([sin_diff, rel_encoding], dim=-1) # Relative encoding
+    #edge_attr = sin_diff # Only use phase difference
+    edge_attr = torch.zeros(edge_index.shape[1], 0).to(device) # Empty edges
+ 
     return edge_index, edge_attr
 
 def collate_fn(batch):
@@ -167,3 +182,23 @@ class ParticleDataset(Dataset):
     def __getitem__(self, idx):
         x, y, res, edge_index, edge_attr = self.data_pairs[idx]
         return x, y, res, edge_index, edge_attr
+
+class RelativeL2Loss(nn.Module):
+    def __init__(self, epsilon=1e-8, reduction='mean'):
+        super(RelativeL2Loss, self).__init__()
+        self.epsilon = epsilon
+        if reduction not in ('mean', 'sum', 'none'):
+            raise ValueError("Reduction must be 'mean', 'sum', or 'none'")
+        self.reduction = reduction
+
+    def forward(self, y_pred, y_true):
+        numerator = torch.sum((y_pred - y_true) ** 2, dim=1)
+        denominator = torch.sum(y_true ** 2, dim=1) + self.epsilon
+        rel_l2 = numerator / denominator
+
+        if self.reduction == 'mean':
+            return torch.mean(rel_l2)
+        elif self.reduction == 'sum':
+            return torch.sum(rel_l2)
+        else:  # 'none'
+            return rel_l2

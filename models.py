@@ -27,6 +27,8 @@ from torch import nn
 import torch
 import torch.nn.functional as F
 from torch_geometric.nn import GATv2Conv
+import numpy as np
+import math
 
 def aggregate(message, row_index, n_node, aggr='sum', mask=None):
     """
@@ -464,3 +466,234 @@ class GAT(nn.Module):
             x = layer(x, edge_index, edge_attr)
         x = self.decoder(x)
         return x
+    
+def get_timestep_embedding(timesteps, embedding_dim, max_positions=10000):
+    half_dim = embedding_dim // 2
+    emb = math.log(max_positions) / (half_dim - 1)
+    emb = torch.exp(torch.arange(half_dim, dtype=torch.float32, device=timesteps.device) * -emb)
+    emb = timesteps.float()[:, None] * emb[None, :]
+    emb = torch.cat([torch.sin(emb), torch.cos(emb)], dim=-1)
+    if embedding_dim % 2 == 1:  # zero pad
+        emb = F.pad(emb, (0, 1), mode='constant')
+    assert emb.shape == (timesteps.shape[0], embedding_dim)
+    return emb
+
+
+def variance_scaling(scale, mode, distribution,
+                     in_axis=1, out_axis=0,
+                     dtype=torch.float32,
+                     device='cpu'):
+    """Ported from JAX. """
+
+    def _compute_fans(shape, in_axis=1, out_axis=0):
+        receptive_field_size = np.prod(shape) / shape[in_axis] / shape[out_axis]
+        fan_in = shape[in_axis] * receptive_field_size
+        fan_out = shape[out_axis] * receptive_field_size
+        return fan_in, fan_out
+
+    def init(shape, dtype=dtype, device=device):
+        fan_in, fan_out = _compute_fans(shape, in_axis, out_axis)
+        if mode == "fan_in":
+            denominator = fan_in
+        elif mode == "fan_out":
+            denominator = fan_out
+        elif mode == "fan_avg":
+            denominator = (fan_in + fan_out) / 2
+        else:
+            raise ValueError(
+                "invalid mode for variance scaling initializer: {}".format(mode))
+        variance = scale / denominator
+        if distribution == "normal":
+            return torch.randn(*shape, dtype=dtype, device=device) * np.sqrt(variance)
+        elif distribution == "uniform":
+            return (torch.rand(*shape, dtype=dtype, device=device) * 2. - 1.) * np.sqrt(3 * variance)
+        else:
+            raise ValueError("invalid distribution for variance scaling initializer")
+
+    return init
+
+
+def default_init(scale=1.):
+    """The same initialization used in DDPM."""
+    scale = 1e-10 if scale == 0 else scale
+    return variance_scaling(scale, 'fan_avg', 'uniform')
+
+
+class NIN(nn.Module):
+    def __init__(self, in_dim, num_units, init_scale=0.1):
+        super().__init__()
+        self.W = nn.Parameter(default_init(scale=init_scale)((in_dim, num_units)), requires_grad=True)
+        self.b = nn.Parameter(torch.zeros(num_units), requires_grad=True)
+
+    def forward(self, x):
+        # x: (B, C, H, W)
+        y = torch.einsum('bchw,co->bohw', x, self.W) + self.b[None, :, None, None]
+        if y.stride()[1] == 1:
+            y = y.contiguous()
+        return y
+    
+
+@torch.jit.script
+def compl_mul1d(a, b):    
+    # (M, N, in_ch), (in_ch, out_ch, M) -> (M, N, out_channel)
+    return torch.einsum("mni,iom->mno", a, b)
+
+
+class SpectralConv1d(nn.Module):
+    def __init__(self, in_ch, out_ch, modes1):
+        super(SpectralConv1d, self).__init__()
+
+        """
+        1D Fourier layer. It does FFT, linear transform, and Inverse FFT.    
+        """
+
+        self.in_ch = in_ch
+        self.out_ch = out_ch
+        self.modes1 = modes1
+
+        self.scale = (1 / (in_ch*out_ch))
+        self.weights1 = nn.Parameter(
+            self.scale * torch.rand(in_ch, out_ch, self.modes1, 2, dtype=torch.float))
+
+    def forward(self, x):
+        T, N, C = x.shape
+        # Compute Fourier coeffcients up to factor of e^(- something constant)
+        with torch.cuda.amp.autocast(enabled=False):
+        # with torch.autocast(device_type='cuda', enabled=False):
+            x_ft = torch.fft.rfftn(x.float(), dim=[0])
+            # Multiply relevant Fourier modes
+            out_ft = compl_mul1d(x_ft[:self.modes1], torch.view_as_complex(self.weights1))
+            # Return to physical space
+            x = torch.fft.irfftn(out_ft, s=[T], dim=[0])
+        return x
+
+
+class TimeConv(nn.Module):
+    def __init__(self, in_ch, out_ch, modes, act, with_nin=False):
+        super(TimeConv, self).__init__()
+        self.with_nin = with_nin
+        self.t_conv = SpectralConv1d(in_ch, out_ch, modes)
+        # if with_nin:
+        #     self.nin = NIN(in_ch, out_ch)
+        self.act = nn.LeakyReLU()
+
+    def forward(self, x):
+        h = self.t_conv(x)
+        # if self.with_nin:
+        #     x = self.nin(x)
+        out = self.act(h)
+        return x + out
+
+
+@torch.jit.script
+def compl_mul1d_x(a, b):
+    # (M, N, in_ch), (in_ch, out_ch, M) -> (M, N, out_channel)
+    return torch.einsum("mndi,iom->mndo", a, b)
+
+
+class SpectralConv1d_x(nn.Module):
+    def __init__(self, in_ch, out_ch, modes1):
+        super(SpectralConv1d_x, self).__init__()
+
+        """
+        1D Fourier layer. It does FFT, linear transform, and Inverse FFT.    
+        """
+
+        self.in_ch = in_ch
+        self.out_ch = out_ch
+        self.modes1 = modes1
+
+        # self.scale = (1 / (in_ch*out_ch))
+        self.scale = 0.1
+        self.weights1 = nn.Parameter(
+            self.scale * torch.rand(in_ch, out_ch, self.modes1, 2, dtype=torch.float))
+
+    def forward(self, x):
+        T, N, D, C = x.shape  # D should be 3
+        # Compute Fourier coeffcients up to factor of e^(- something constant)
+        with torch.cuda.amp.autocast(enabled=False):
+        # with torch.autocast(device_type='cuda', enabled=False):
+            x_ft = torch.fft.rfftn(x.float(), dim=[0])
+            # Multiply relevant Fourier modes
+            out_ft = compl_mul1d_x(x_ft[:self.modes1], torch.view_as_complex(self.weights1))
+            # Return to physical space
+            x = torch.fft.irfftn(out_ft, s=[T], dim=[0])
+        return x
+
+
+class TimeConv_x(nn.Module):
+    def __init__(self, in_ch, out_ch, modes, act, with_nin=False):
+        super(TimeConv_x, self).__init__()
+        self.with_nin = with_nin
+        self.t_conv = SpectralConv1d_x(in_ch, out_ch, modes)
+        # if with_nin:
+        #     self.nin = NIN(in_ch, out_ch)
+
+    def forward(self, x):  # x: [T, N, D, C]
+        # x = x.unsqueeze(-1)  # [T, N, D, C]
+        h = self.t_conv(x)
+        # if self.with_nin:
+        #     x = self.nin(x)
+        return x + h
+    
+class EGNO(EGNN):
+    def __init__(self, n_layers, in_node_nf, in_edge_nf, hidden_nf, activation=nn.SiLU(), device='cpu', with_v=False,
+                 flat=False, norm=False, use_time_conv=True, num_modes=2, num_timesteps=8, time_emb_dim=32):
+        self.time_emb_dim = time_emb_dim
+        in_node_nf = in_node_nf + self.time_emb_dim
+
+        super(EGNO, self).__init__(n_layers, in_node_nf, in_edge_nf, hidden_nf, activation, device, with_v, flat, norm)
+        self.use_time_conv = use_time_conv
+        self.num_timesteps = num_timesteps
+        self.device = device
+        self.hidden_nf = hidden_nf
+
+        if use_time_conv:
+            self.time_conv_modules = nn.ModuleList()
+            self.time_conv_x_modules = nn.ModuleList()
+            for i in range(n_layers):
+                self.time_conv_modules.append(TimeConv(hidden_nf, hidden_nf, num_modes, activation, with_nin=False))
+                self.time_conv_x_modules.append(TimeConv_x(2, 2, num_modes, activation, with_nin=False))
+
+        self.to(self.device)
+
+    def forward(self, x, h, edge_index, edge_fea, v=None, loc_mean=None):  # [BN, H]
+
+        T = self.num_timesteps
+
+        num_nodes = h.shape[0]
+        num_edges = edge_index[0].shape[0]
+
+        cumsum = torch.arange(0, T).to(self.device) * num_nodes
+        cumsum_nodes = cumsum.repeat_interleave(num_nodes, dim=0)
+        cumsum_edges = cumsum.repeat_interleave(num_edges, dim=0)
+
+        time_emb = get_timestep_embedding(torch.arange(T).to(x), embedding_dim=self.time_emb_dim, max_positions=10000)  # [T, H_t]
+        h = h.unsqueeze(0).repeat(T, 1, 1)  # [T, BN, H]
+        time_emb = time_emb.unsqueeze(1).repeat(1, num_nodes, 1)  # [T, BN, H_t]
+        h = torch.cat((h, time_emb), dim=-1)  # [T, BN, H+H_t]
+        h = h.view(-1, h.shape[-1])  # [T*BN, H+H_t]
+
+        h = self.embedding(h)
+        x = x.repeat(T, 1)
+        loc_mean = loc_mean.repeat(T, 1)
+        edges_0 = edge_index[0].repeat(T) + cumsum_edges
+        edges_1 = edge_index[1].repeat(T) + cumsum_edges
+        edge_index = [edges_0, edges_1]
+        v = v.repeat(T, 1)
+
+        edge_fea = edge_fea.repeat(T, 1)
+
+        for i in range(self.n_layers):
+            if self.use_time_conv:
+                time_conv = self.time_conv_modules[i]
+                h = time_conv(h.view(T, num_nodes, self.hidden_nf)).view(T * num_nodes, self.hidden_nf)
+                x_translated = x - loc_mean
+                time_conv_x = self.time_conv_x_modules[i]
+                X = torch.stack((x_translated, v), dim=-1)
+                temp = time_conv_x(X.view(T, num_nodes, 3, 2))
+                x = temp[..., 0].view(T * num_nodes, 3) + loc_mean
+                v = temp[..., 1].view(T * num_nodes, 3)
+
+            x, v, h = self.layers[i](x, h, edge_index, edge_fea, v=v)
+        return (x, v, h) if v is not None else (x, h)

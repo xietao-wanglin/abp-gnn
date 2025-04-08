@@ -1,10 +1,10 @@
-from models import GNN, GAT, EGNO
-from utilities import process_simulation_data, ParticleDataset, collate_fn, RelativeL2Loss
+from models import EGNO
+from utilities import process_simulation_data, ParticleDataset, collate_fn
 
 import torch
 import torch.nn as nn
 from torch.optim import AdamW
-from torch.optim.lr_scheduler import CosineAnnealingLR, ReduceLROnPlateau
+from torch.optim.lr_scheduler import CosineAnnealingLR
 from torch.utils.data import DataLoader
 import wandb
 
@@ -18,7 +18,6 @@ from typing import Optional, List, Dict
 
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 dtype = torch.float
-torch.manual_seed(0)
 wandb.login()
 
 def train(model: nn.Module, 
@@ -116,8 +115,8 @@ def train(model: nn.Module,
     )
     
     optimizer = AdamW(model.parameters(), lr=lr, weight_decay=weight_decay)
-    scheduler = ReduceLROnPlateau(optimizer, mode='min', factor=0.5, patience=4, threshold=1e-4)
-    criterion = RelativeL2Loss(reduction='none')
+    scheduler = CosineAnnealingLR(optimizer, T_max=50)
+    criterion = nn.MSELoss(reduction='none')
     train_details = {
         'optimizer': str(optimizer),
         'scheduler': str(scheduler),
@@ -176,6 +175,7 @@ def train(model: nn.Module,
             
             pbar.set_postfix({'train_loss': f'{batch_loss:.6f}'})
         
+        #scheduler.step()
         model.eval()
         val_losses = []
         with torch.no_grad():
@@ -197,7 +197,6 @@ def train(model: nn.Module,
         
         history['train_loss'].append(avg_train_loss)
         history['val_loss'].append(avg_val_loss)
-        scheduler.step(avg_val_loss)
         wandb.log({
             'epoch': epoch + 1,
             'train_loss': avg_train_loss,
@@ -250,30 +249,19 @@ def train(model: nn.Module,
 
 if __name__ == '__main__':
 
-    train_glob = glob('./data_col_euler/simulation_train_*')[:1000]
+    train_glob = glob('./data_col/simulation_train_*')[:100]
     train_simulations = [np.load(sim) for sim in train_glob]
 
-    test_glob = glob('./data_col_euler/simulation_test_*')[:200]
+    test_glob = glob('./data_col/simulation_test_*')[:20]
     test_simulations = [np.load(sim) for sim in test_glob]
 
-    model = GNN(
+    model = EGNO(
         n_layers=3,
         in_node_nf=3,
-        in_edge_nf=0,
+        in_edge_nf=1,
         hidden_nf=64,
-        dropout=0,
-        device=device,
-        norm=False
+        device=device
     ).to(dtype=dtype)
-
-#    model = GAT(
-#        n_layers=5,
-#        in_node_nf=3,
-#        in_edge_nf=1,
-#        heads=16,
-#        hidden_nf=512,
-#        norm=False,
-#    )
 
     history = train(
         model=model,
@@ -282,8 +270,8 @@ if __name__ == '__main__':
         batch_size=1,
         train_simulation_list=train_simulations,
         test_simulation_list=test_simulations,
-        n_epochs=200,
-        lr=1e-3,
+        n_epochs=5000,
+        lr=5e-4,
         weight_decay=1e-4,
         subset=True,
         device=device
