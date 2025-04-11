@@ -1,11 +1,11 @@
-from models import GNN, GAT, EGNO
-from utilities import process_simulation_data, ParticleDataset, collate_fn, RelativeL2Loss
+from models import GNN
+from utils import process_simulation_data, ParticleDataset, RelativeL2Loss
 
 import torch
 import torch.nn as nn
 from torch.optim import AdamW
-from torch.optim.lr_scheduler import CosineAnnealingLR, ReduceLROnPlateau
-from torch.utils.data import DataLoader
+from torch.optim.lr_scheduler import CosineAnnealingWarmRestarts, ReduceLROnPlateau
+from torch_geometric.loader import DataLoader
 import wandb
 
 import numpy as np
@@ -16,7 +16,8 @@ import json
 from glob import glob
 from typing import Optional, List, Dict
 
-device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+device = torch.accelerator.current_accelerator().type if torch.accelerator.is_available() else 'cpu'
+print(f'Using {device} device')
 dtype = torch.float
 torch.manual_seed(0)
 wandb.login()
@@ -26,7 +27,7 @@ def train(model: nn.Module,
           test_simulation_list: List,
           cluster_method: str,
           cluster_parameter: float | int,
-          batch_size: Optional[int] = 1,
+          batch_size: Optional[int] = 32,
           n_epochs: Optional[int] = 100, 
           lr: Optional[float] = 5e-4, 
           weight_decay: Optional[float] = 1e-4,
@@ -106,17 +107,15 @@ def train(model: nn.Module,
         train_dataset,
         batch_size=batch_size,
         shuffle=True,
-        collate_fn=collate_fn
     )
     
     val_loader = DataLoader(
         test_dataset,
         batch_size=batch_size,
-        collate_fn=collate_fn
     )
     
     optimizer = AdamW(model.parameters(), lr=lr, weight_decay=weight_decay)
-    scheduler = ReduceLROnPlateau(optimizer, mode='min', factor=0.5, patience=4, threshold=1e-4)
+    scheduler = ReduceLROnPlateau(optimizer, mode='min', factor=0.5, patience=6, threshold=1e-4)
     criterion = RelativeL2Loss(reduction='none')
     train_details = {
         'optimizer': str(optimizer),
@@ -151,53 +150,38 @@ def train(model: nn.Module,
 
         pbar = tqdm(train_loader, desc=f'Epoch {epoch+1}/{n_epochs}')
         for batch_idx, batch in enumerate(pbar):
-            batch_loss = 0
-            for x, t, res, edge_index, edge_attr in batch:
-                x = x.transpose(0, 1).to(device)  # Shape: (3, N) -> (N, 3)
-                res = res.transpose(0, 1).to(device) # Range: [0, 1] x [0, 1] x [0, 2pi]
-                
-                predictions = model(x, edge_index, edge_attr)
-                loss = criterion(predictions.squeeze(), res).mean()
 
-                optimizer.zero_grad()
-                loss.backward()
-                optimizer.step()
-
-                batch_loss += loss.item()
-
-                wandb.log(
-                    {'train_batch_loss': loss.item(), 
-                     'epoch': epoch, 
-                     'timestep': t, 
-                     'batch': batch_idx}
-                    )
-            
-            train_losses.append(batch_loss/len(batch))
-            
-            pbar.set_postfix({'train_loss': f'{batch_loss:.6f}'})
+            batch = batch.to(device)
+            predictions = model(batch)
+            y = batch.y
+            loss = criterion(predictions, y).mean()
+            optimizer.zero_grad()
+            loss.backward()
+            optimizer.step()
+            wandb.log(
+                {'train_batch_loss': loss.item(), 
+                    'epoch': epoch, 
+                    'batch': batch_idx}
+                )
+            pbar.set_postfix({'loss': f'{loss.item():.6f}'})
+            train_losses.append(loss.item())
         
         model.eval()
         val_losses = []
         with torch.no_grad():
             for batch in val_loader:
-                batch_loss = 0
-                for x, _, res, edge_index, edge_attr in batch:
-                    x = x.transpose(0, 1).to(device)
-                    res = res.transpose(0, 1).to(device)
-
-                    predictions = model(x, edge_index, edge_attr)
-                    loss = criterion(predictions.squeeze(), res).mean()
-                    
-                    batch_loss += loss.item()
-                
-                val_losses.append(batch_loss/len(batch))
+                batch = batch.to(device)
+                predictions = model(batch)
+                y = batch.y
+                loss = criterion(predictions, y).mean()
+                val_losses.append(loss.item())
         
         avg_train_loss = np.mean(train_losses)
         avg_val_loss = np.mean(val_losses)
         
         history['train_loss'].append(avg_train_loss)
         history['val_loss'].append(avg_val_loss)
-        scheduler.step(avg_val_loss)
+        #scheduler.step(avg_val_loss)
         wandb.log({
             'epoch': epoch + 1,
             'train_loss': avg_train_loss,
@@ -231,8 +215,8 @@ def train(model: nn.Module,
             wandb.save(checkpoint_path)
         
         print(f'\nEpoch {epoch+1}/{n_epochs}')
-        print(f'Train Loss: {avg_train_loss:.6f}')
-        print(f'Val Loss: {avg_val_loss:.6f}')
+        print(f'Train Loss: {avg_train_loss:.8f}')
+        print(f'Val Loss: {avg_val_loss:.8f}')
         print('-' * 30)
     
         history_path = os.path.join(checkpoint_dir, f'{hist_filename}.json')
@@ -250,40 +234,32 @@ def train(model: nn.Module,
 
 if __name__ == '__main__':
 
-    train_glob = glob('./data_col_euler/simulation_train_*')[:1000]
+    train_glob = glob('./data_long_ts/simulation_train_*')[:1000]
     train_simulations = [np.load(sim) for sim in train_glob]
 
-    test_glob = glob('./data_col_euler/simulation_test_*')[:200]
+    test_glob = glob('./data_long_ts/simulation_test_*')[:200]
     test_simulations = [np.load(sim) for sim in test_glob]
 
     model = GNN(
-        n_layers=3,
+        n_layers=10,
         in_node_nf=3,
+        out_node_nf=3,
         in_edge_nf=0,
-        hidden_nf=64,
-        dropout=0,
+        hidden_nf=128,
         device=device,
-        norm=False
+        norm=False,
+        activation=nn.SiLU()
     ).to(dtype=dtype)
-
-#    model = GAT(
-#        n_layers=5,
-#        in_node_nf=3,
-#        in_edge_nf=1,
-#        heads=16,
-#        hidden_nf=512,
-#        norm=False,
-#    )
 
     history = train(
         model=model,
         cluster_method='radius',
         cluster_parameter=0.1,
-        batch_size=1,
+        batch_size=4,
         train_simulation_list=train_simulations,
         test_simulation_list=test_simulations,
         n_epochs=200,
-        lr=1e-3,
+        lr=3e-4,
         weight_decay=1e-4,
         subset=True,
         device=device
