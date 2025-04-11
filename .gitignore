@@ -188,3 +188,6 @@ cython_debug/
 
 # wandb
 /wandb
+
+# MacOS
+.DS_Store
