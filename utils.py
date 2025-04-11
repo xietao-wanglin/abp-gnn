@@ -2,7 +2,6 @@ import torch
 from torch import nn
 import torch
 from torch_geometric.data import Dataset, Data
-from torch_cluster import knn_graph
 
 from typing import Optional, List, Tuple
 
@@ -142,7 +141,8 @@ def compute_graph(x: torch.Tensor,
         mask = edges[0] != edges[1]
         edge_index = torch.stack([edges[0][mask], edges[1][mask]]) # Remove self-loops
     elif method == 'knn':
-        edge_index = knn_graph(xy, k=p).to(device)
+        # TODO: k-nn graph with periodic BCs
+        raise NotImplementedError('k-NN graph not yet implemented')
     else:
         raise ValueError("Invalid method, must be either 'radius' or 'knn'")
 
