@@ -33,6 +33,7 @@ def apply_periodic_boundary(positions: torch.Tensor, dims: Optional[List] = None
 
 def process_simulation_data(simulation_list: List, 
                             subset: Optional[bool] = False,
+                            subset_samples: Optional[List] = None,
                             n_samples: Optional[int] = 4,
                             cluster_method: Optional[str] = 'radius',
                             p: Optional[int] = 0.1, 
@@ -48,12 +49,14 @@ def process_simulation_data(simulation_list: List,
         List of simulation arrays, each of shape (timesteps, 3, N) where N can vary between simulations.
     subset: bool, optional
         If True, selects `n_samples` random timesteps instead of all.
+    subset_samples: List, optional
+        If provided, samples to choose from trajectories if `subset=True`, otherwise random, default is None.
     n_samples: int, optional
         Number of random samples to pick when `subset=True`.
     cluster_method: str, optional
-        Method used to create edges in graph, either 'radius' or 'knn'.
+        Method used to create edges in graph, either 'radius' or 'knn', default is 'radius'.
     p: float or int, optional
-        Parameter of `cluster_method`.
+        Parameter of `cluster_method`, default is 0.1.
     dtype : torch.dtype
         Data type for conversion, default is torch.float.
     device: str or torch.device, optional
@@ -76,9 +79,12 @@ def process_simulation_data(simulation_list: List,
         
         # Choose steps pairs
         if subset:
-            timesteps = torch.randint(1, num_timesteps, size=(min(n_samples, num_timesteps),))
+            if subset_samples is None:
+                timesteps = torch.randint(0, num_timesteps, size=(min(n_samples, num_timesteps),))
+            else:
+                timesteps = subset_samples
         else:
-            timesteps = range(1, num_timesteps) # Avoid step 1 as it is usually complete non-sense
+            timesteps = range(0, num_timesteps)
 
         for t in timesteps:
             x = sim[t]
@@ -99,9 +105,9 @@ def process_simulation_data(simulation_list: List,
     return data_pairs
 
 def compute_graph(x: torch.Tensor, 
-                      method: str,
-                      p: Optional[float | int] = 4, 
-                      device: Optional[str | torch.device] = 'cpu') -> Tuple[torch.Tensor, torch.Tensor]:
+                    method: str,
+                    p: float | int, 
+                    device: Optional[str | torch.device] = 'cpu') -> Tuple[torch.Tensor, torch.Tensor]:
     """
     Compute graph for a given set of node features.
 
@@ -188,16 +194,20 @@ class ParticleDataset(Dataset):
         return data
 
 class RelativeL2Loss(nn.Module):
-    def __init__(self, epsilon=1e-8, reduction='mean'):
+    def __init__(self, epsilon=1e-8, reduction='mean', weights=None):
         super(RelativeL2Loss, self).__init__()
         self.epsilon = epsilon
         if reduction not in ('mean', 'sum', 'none'):
             raise ValueError("Reduction must be 'mean', 'sum', or 'none'")
         self.reduction = reduction
+        if weights is None:
+            self.weights = 1
+        else:
+            self.weights = torch.tensor(weights)
 
     def forward(self, y_pred, y_true):
-        numerator = torch.sum((y_pred - y_true) ** 2, dim=-1)
-        denominator = torch.sum(y_true ** 2, dim=-1) + self.epsilon
+        numerator = torch.sum((self.weights*y_pred - self.weights*y_true) ** 2, dim=-1)
+        denominator = torch.sum((self.weights*y_true) ** 2, dim=-1) + self.epsilon
         rel_l2 = numerator / denominator
 
         if self.reduction == 'mean':

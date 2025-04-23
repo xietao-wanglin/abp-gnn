@@ -1,4 +1,4 @@
-from models import GNN
+from models import GNN, GAT
 from utils import process_simulation_data, ParticleDataset, RelativeL2Loss
 
 import torch
@@ -36,6 +36,7 @@ def train(model: nn.Module,
           checkpoint_every: Optional[int] = 2,
           hist_filename: Optional[str] = 'training_history',
           subset: Optional[bool] = False,
+          subset_samples: Optional[List] = None,
           base_model_path: Optional[str] = None) -> Dict:
     """
     Train the GNN model.
@@ -67,11 +68,15 @@ def train(model: nn.Module,
     hist_filename: str, optional
         Name of training history JSON file, defualt is 'training history'.
     subset: bool, optional
-        If True, use a subset of the trajectories instead of full simulations.
+        If True, use a subset of the trajectories instead of full simulations, default is False.
+    subset_samples: List, optional
+        If provided, samples to choose from trajectories if `subset=True`, otherwise random, default is None.
+    base_model_path: str, optional
+        If provided, use path model to load weights, default is None.
     
     Returns
     -------
-    history: dict
+    history: Dict
         Training history.
     """
     
@@ -91,12 +96,14 @@ def train(model: nn.Module,
                                                cluster_method=cluster_method,
                                                p=cluster_parameter,
                                                subset=subset, 
+                                               subset_samples=subset_samples,
                                                dtype=dtype, 
                                                device=device)
     data_pairs_test = process_simulation_data(test_simulation_list, 
                                               cluster_method=cluster_method,
                                               p=cluster_parameter,
-                                              subset=subset, 
+                                              subset=subset,
+                                              subset_samples=subset_samples, 
                                               dtype=dtype, 
                                               device=device)
     
@@ -138,7 +145,7 @@ def train(model: nn.Module,
 
     initial_epoch = 0 
     if base_model_path is not None:
-        params = torch.load(base_model_path, map_location=device)
+        params = torch.load(base_model_path, map_location=device, weights_only=False)
         model.load_state_dict(params['model_state_dict'])
         optimizer.load_state_dict(params['optimizer_state_dict'])
         scheduler.load_state_dict(params['scheduler_state_dict'])
@@ -214,7 +221,7 @@ def train(model: nn.Module,
             }, checkpoint_path)
             wandb.save(checkpoint_path)
         
-        print(f'\nEpoch {epoch+1}/{n_epochs}')
+        print(f'\nEpoch {epoch+1}/{n_epochs+initial_epoch}')
         print(f'Train Loss: {avg_train_loss:.8f}')
         print(f'Val Loss: {avg_val_loss:.8f}')
         print('-' * 30)
@@ -234,10 +241,10 @@ def train(model: nn.Module,
 
 if __name__ == '__main__':
 
-    train_glob = glob('./data_long_ts/simulation_train_*')[:1000]
+    train_glob = glob('./data_col/simulation_train_*')[:1000]
     train_simulations = [np.load(sim) for sim in train_glob]
 
-    test_glob = glob('./data_long_ts/simulation_test_*')[:200]
+    test_glob = glob('./data_col/simulation_test_*')[:200]
     test_simulations = [np.load(sim) for sim in test_glob]
 
     model = GNN(
@@ -262,5 +269,7 @@ if __name__ == '__main__':
         lr=3e-4,
         weight_decay=1e-4,
         subset=True,
-        device=device
+        subset_samples=[0, 20, 40, 80],
+        device=device,
+        base_model_path=None
     )
