@@ -66,7 +66,7 @@ def train(model: nn.Module,
     checkpoint_every: int, optional
         Save checkpoint every N epochs, default is 10.
     hist_filename: str, optional
-        Name of training history JSON file, defualt is 'training history'.
+        Name of training history JSON file, defualt is 'training_history'.
     subset: bool, optional
         If True, use a subset of the trajectories instead of full simulations, default is False.
     subset_samples: List, optional

@@ -5,12 +5,13 @@ from matplotlib.animation import FuncAnimation
 from typing import Optional
 from tqdm import tqdm
 
+from utils import set_param
 class Simulation:
 
     def __init__(self, N: Optional[int] = 8,
-                 v0: Optional[float] = 1.0,
-                 rot_rate: Optional[np.ndarray | int] = None,
-                 rot_couple: Optional[float] = 0.1,
+                 v0: Optional[np.ndarray | float] = None,
+                 rot_rate: Optional[np.ndarray | float] = None,
+                 rot_couple: Optional[np.ndarray | float] = None,
                  couple_radius: Optional[float] = 0.1, 
                  L_box: Optional[float] = 1.0,
                  timesteps: Optional[int] = 100,
@@ -18,14 +19,9 @@ class Simulation:
                  seed: Optional[int] = 0):
         
         self.N = N
-        self.v0 = v0
-        if rot_rate is None:
-            self.rot_rate = np.ones(N)
-        if isinstance(rot_rate, int):
-            self.rot_rate = np.ones(N)*rot_rate
-        else:
-            self.rot_rate = rot_rate
-        self.rot_couple = rot_couple
+        self.v0 = set_param(v0, N, 0.1)
+        self.rot_rate = set_param(rot_rate, N, 1)
+        self.rot_couple = set_param(rot_couple, N, 0.1)
         self.couple_radius = couple_radius
         self.L_box = L_box
         
@@ -33,8 +29,8 @@ class Simulation:
         self.delta_t = delta_t
 
         np.random.seed(seed)
-        initial_state = np.random.random(3*N)
-        initial_state[2::3] = initial_state[2::3]*2*np.pi
+        initial_state = np.random.random(3*N)*L_box
+        initial_state[2::3] = initial_state[2::3]*2*np.pi/L_box
         initial_state = initial_state.reshape(N, 3).T
         self.positions = np.zeros(shape=(self.timesteps, 3, self.N))
         self.positions[0] = initial_state
@@ -127,9 +123,9 @@ class Simulation:
 class InfiniteSimulation(Simulation):
     
     def __init__(self, N: Optional[int] = 8,
-                 v0: Optional[float] = 1.0,
-                 rot_rate: Optional[np.ndarray | int] = None,
-                 rot_couple: Optional[float] = 0.1,
+                 v0: Optional[np.ndarray | float] = None,
+                 rot_rate: Optional[np.ndarray | float] = None,
+                 rot_couple: Optional[np.ndarray | float] = None,
                  L_box: Optional[float] = 1.0,
                  timesteps: Optional[int] = 100,
                  delta_t: Optional[float] = 0.1,
@@ -169,9 +165,9 @@ class InfiniteSimulation(Simulation):
 class StiffSimulation(Simulation):
 
     def __init__(self, N: Optional[int] = 8,
-                 v0: Optional[float] = 1.0,
+                 v0: Optional[np.ndarray | float] = None,
                  rot_rate: Optional[np.ndarray | int] = None,
-                 rot_couple: Optional[float] = 0.1,
+                 rot_couple: Optional[np.ndarray | float] = None,
                  couple_radius: Optional[float] = 0.1,
                  epsilon: Optional[float] = 0.1,
                  sigma: Optional[float] = 0.01,

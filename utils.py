@@ -1,6 +1,6 @@
+import numpy as np
 import torch
 from torch import nn
-import torch
 from torch_geometric.data import Dataset, Data
 
 from typing import Optional, List, Tuple
@@ -15,7 +15,7 @@ def apply_periodic_boundary(positions: torch.Tensor, dims: Optional[List] = None
     ----------
     positions: torch.Tensor
         Position Tensor.
-    dims: list, optional
+    dims: List, optional
         The dimensions of the periodic box, default is None.
 
     Returns
@@ -216,3 +216,11 @@ class RelativeL2Loss(nn.Module):
             return torch.sum(rel_l2)
         else:  # 'none'
             return rel_l2
+
+def set_param(param, N, default):
+    if param is None:
+        return np.ones(N)*default
+    elif isinstance(param, (float, int)):
+        return np.ones(N)*param
+    else:
+        return param
