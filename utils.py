@@ -32,9 +32,7 @@ def apply_periodic_boundary(positions: torch.Tensor, dims: Optional[List] = None
     return pos
 
 def process_simulation_data(simulation_list: List, 
-                            subset: Optional[bool] = False,
-                            subset_samples: Optional[List] = None,
-                            n_samples: Optional[int] = 4,
+                            times_list: List,
                             cluster_method: Optional[str] = 'radius',
                             p: Optional[int] = 0.1, 
                             dtype: Optional[torch.dtype] = torch.float,
@@ -47,10 +45,6 @@ def process_simulation_data(simulation_list: List,
     ----------
     simulation_list: List
         List of simulation arrays, each of shape (timesteps, 3, N) where N can vary between simulations.
-    subset: bool, optional
-        If True, selects `n_samples` random timesteps instead of all.
-    subset_samples: List, optional
-        If provided, samples to choose from trajectories if `subset=True`, otherwise random, default is None.
     n_samples: int, optional
         Number of random samples to pick when `subset=True`.
     cluster_method: str, optional
@@ -69,38 +63,24 @@ def process_simulation_data(simulation_list: List,
         where each x and y represents one timestep pair from any simulation.
     """
     data_pairs = []
+    assert len(simulation_list) == len(times_list), 'Must have equal amounts of simulations and times'
     
-    for sim in simulation_list:
+    for idx in range(len(simulation_list)):
+
+        sim = simulation_list[idx]
+        times = times_list[idx]
 
         if not torch.is_tensor(sim):
             sim = torch.tensor(sim, dtype=dtype)
+        if not torch.is_tensor(times):
+            times = torch.tensor(times, dtype=dtype)
 
-        num_timesteps = sim.shape[0]-1
-        
-        # Choose steps pairs
-        if subset:
-            if subset_samples is None:
-                timesteps = torch.randint(0, num_timesteps, size=(min(n_samples, num_timesteps),))
-            else:
-                timesteps = subset_samples
-        else:
-            timesteps = range(0, num_timesteps)
+        x = sim[0] # Features
+        y = sim[1:] # Labels
+        t = times[1:] # Collocation times
 
-        for t in timesteps:
-            x = sim[t]
-            y = sim[t+1]
-
-            x_bounded = apply_periodic_boundary(x) # Ensure [0, 1] x [0, 1] x [0, 2pi]
-
-            N = x[0].shape[0]
-
-            edge_index, edge_attr = compute_graph(x_bounded, method=cluster_method, p=p, device=device)
-
-            simulation = StiffSimulation(N=N, v0=0.1, L_box=1.0, delta_t=0.1, rot_couple=0, sigma=0.025, rot_rate=1,)
-
-            derivatives = torch.tensor(simulation.particle_system(t, y.numpy().T.reshape(N*3)).reshape(N, 3).T, dtype=dtype)
-
-            data_pairs.append((x_bounded.T, derivatives.T, edge_index, edge_attr))
+        edge_index, edge_attr = compute_graph(x, method=cluster_method, p=p, device=device)
+        data_pairs.append((x.T, y.permute(0, 2, 1), t, edge_index, edge_attr))
     
     return data_pairs
 
@@ -117,8 +97,8 @@ def compute_graph(x: torch.Tensor,
         Postions (x, y, theta) of shape (3, N).
     method: str
         Either 'radius' for radial graph or 'knn' for knn graph.
-    p: float or int, optional
-        Parameter of 'method'.
+    p: float or int
+        Parameter of `method`.
     device: str or torch.device, optional
         Either 'cpu', 'cuda' or torch.device instance, default is 'cpu'.
 
@@ -147,8 +127,22 @@ def compute_graph(x: torch.Tensor,
         mask = edges[0] != edges[1]
         edge_index = torch.stack([edges[0][mask], edges[1][mask]]) # Remove self-loops
     elif method == 'knn':
-        # TODO: k-nn graph with periodic BCs
-        raise NotImplementedError('k-NN graph not yet implemented')
+        x_coords = xy[:, 0]
+        y_coords = xy[:, 1]
+        
+        dx = x_coords.unsqueeze(1) - x_coords.unsqueeze(0)
+        dy = y_coords.unsqueeze(1) - y_coords.unsqueeze(0)
+        
+        dx = dx - torch.round(dx)
+        dy = dy - torch.round(dy)
+        
+        distances = torch.sqrt(dx.pow(2) + dy.pow(2))
+        k = int(p)
+        distances = distances.fill_diagonal_(float('inf')) # Avoid self-loops
+        _, indices = torch.topk(distances, k=k, dim=1, largest=False)
+        row_indices = torch.arange(xy.shape[0], device=device).repeat_interleave(k)
+        col_indices = indices.flatten()
+        edge_index = torch.stack([row_indices, col_indices])
     else:
         raise ValueError("Invalid method, must be either 'radius' or 'knn'")
 
@@ -173,7 +167,7 @@ class ParticleDataset(Dataset):
     Parameters
     ----------
     data_pairs: List
-        List of (x, y, edge_index, edge_attr) samples.
+        List of (x, y, t, edge_index, edge_attr) samples.
     """
     def __init__(self, data_pairs, transform=None, pre_transform=None):
         super(ParticleDataset, self).__init__(None, transform, pre_transform)
@@ -183,12 +177,13 @@ class ParticleDataset(Dataset):
         return len(self.data_pairs)
     
     def get(self, idx):
-        x, y, edge_index, edge_attr = self.data_pairs[idx]
+        x, y, t, edge_index, edge_attr = self.data_pairs[idx]
         data = Data(
             x=x,
             edge_index=edge_index,
             edge_attr=edge_attr,
-            y=y 
+            y=y,
+            t=t
         )
         
         return data
@@ -216,11 +211,3 @@ class RelativeL2Loss(nn.Module):
             return torch.sum(rel_l2)
         else:  # 'none'
             return rel_l2
-
-def set_param(param, N, default):
-    if param is None:
-        return np.ones(N)*default
-    elif isinstance(param, (float, int)):
-        return np.ones(N)*param
-    else:
-        return param

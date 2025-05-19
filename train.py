@@ -1,4 +1,4 @@
-from models import GNN, GAT
+from models import GNN, GAT, LatentGNN
 from utils import process_simulation_data, ParticleDataset, RelativeL2Loss
 
 import torch
@@ -23,10 +23,9 @@ torch.manual_seed(0)
 wandb.login()
 
 def train(model: nn.Module, 
-          train_simulation_list: List, 
-          test_simulation_list: List,
           cluster_method: str,
-          cluster_parameter: float | int,
+          cluster_parameter: float | int, 
+          data_loc: str,
           batch_size: Optional[int] = 32,
           n_epochs: Optional[int] = 100, 
           lr: Optional[float] = 5e-4, 
@@ -35,8 +34,6 @@ def train(model: nn.Module,
           checkpoint_dir: Optional[str] = 'checkpoints',
           checkpoint_every: Optional[int] = 2,
           hist_filename: Optional[str] = 'training_history',
-          subset: Optional[bool] = False,
-          subset_samples: Optional[List] = None,
           base_model_path: Optional[str] = None) -> Dict:
     """
     Train the GNN model.
@@ -92,18 +89,27 @@ def train(model: nn.Module,
 
     os.makedirs(checkpoint_dir, exist_ok=True)
 
-    data_pairs_train = process_simulation_data(train_simulation_list, 
+    train_glob = sorted(glob(f'./{data_loc}/simulation_train_*'))
+    test_glob = sorted(glob(f'./{data_loc}/simulation_test_*'))
+    times_train_glob = sorted(glob(f'./{data_loc}/times_train_*'))
+    times_test_glob = sorted(glob(f'./{data_loc}/times_test_*'))
+
+    train_simulations = [np.load(sim) for sim in train_glob]
+    test_simulations = [np.load(sim) for sim in test_glob]
+
+    train_times = [np.load(times) for times in times_train_glob]
+    test_times = [np.load(times) for times in times_test_glob]
+
+    data_pairs_train = process_simulation_data(train_simulations,
+                                               train_times, 
                                                cluster_method=cluster_method,
                                                p=cluster_parameter,
-                                               subset=subset, 
-                                               subset_samples=subset_samples,
                                                dtype=dtype, 
                                                device=device)
-    data_pairs_test = process_simulation_data(test_simulation_list, 
+    data_pairs_test = process_simulation_data(test_simulations,
+                                              test_times, 
                                               cluster_method=cluster_method,
                                               p=cluster_parameter,
-                                              subset=subset,
-                                              subset_samples=subset_samples, 
                                               dtype=dtype, 
                                               device=device)
     
@@ -123,7 +129,7 @@ def train(model: nn.Module,
     
     optimizer = AdamW(model.parameters(), lr=lr, weight_decay=weight_decay)
     scheduler = ReduceLROnPlateau(optimizer, mode='min', factor=0.5, patience=6, threshold=1e-4)
-    criterion = RelativeL2Loss(reduction='none')
+    criterion = nn.MSELoss(reduction='none')
     train_details = {
         'optimizer': str(optimizer),
         'scheduler': str(scheduler),
@@ -155,13 +161,15 @@ def train(model: nn.Module,
         model.train()
         train_losses = []
 
-        pbar = tqdm(train_loader, desc=f'Epoch {epoch+1}/{n_epochs}')
+        pbar = tqdm(train_loader, desc=f'Epoch {epoch+1}/{n_epochs+initial_epoch}')
         for batch_idx, batch in enumerate(pbar):
 
             batch = batch.to(device)
-            predictions = model(batch)
+            
             y = batch.y
-            loss = criterion(predictions, y).mean()
+            t = batch.t
+            pred = model(batch, t)
+            loss = criterion(pred, y).mean()
             optimizer.zero_grad()
             loss.backward()
             optimizer.step()
@@ -178,9 +186,10 @@ def train(model: nn.Module,
         with torch.no_grad():
             for batch in val_loader:
                 batch = batch.to(device)
-                predictions = model(batch)
                 y = batch.y
-                loss = criterion(predictions, y).mean()
+                t = batch.t
+                pred = model(batch, t)
+                loss = criterion(pred, y).mean()
                 val_losses.append(loss.item())
         
         avg_train_loss = np.mean(train_losses)
@@ -241,20 +250,15 @@ def train(model: nn.Module,
 
 if __name__ == '__main__':
 
-    train_glob = glob('./data_col/simulation_train_*')[:1000]
-    train_simulations = [np.load(sim) for sim in train_glob]
-
-    test_glob = glob('./data_col/simulation_test_*')[:200]
-    test_simulations = [np.load(sim) for sim in test_glob]
-
-    model = GNN(
+    model = LatentGNN(
         n_layers=10,
         in_node_nf=3,
         out_node_nf=3,
+        latent_nf=10,
         in_edge_nf=0,
         hidden_nf=128,
         device=device,
-        norm=False,
+        norm=True,
         activation=nn.SiLU()
     ).to(dtype=dtype)
 
@@ -262,14 +266,11 @@ if __name__ == '__main__':
         model=model,
         cluster_method='radius',
         cluster_parameter=0.1,
-        batch_size=4,
-        train_simulation_list=train_simulations,
-        test_simulation_list=test_simulations,
+        data_loc='data',
+        batch_size=1,
         n_epochs=200,
         lr=3e-4,
         weight_decay=1e-4,
-        subset=True,
-        subset_samples=[0, 20, 40, 80],
         device=device,
         base_model_path=None
     )
