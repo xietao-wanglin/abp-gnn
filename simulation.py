@@ -4,8 +4,8 @@ import matplotlib.pyplot as plt
 from matplotlib.animation import FuncAnimation
 from typing import Optional
 from tqdm import tqdm
+from scipy.optimize import fsolve, root
 
-from utils import set_param
 class Simulation:
 
     def __init__(self, N: Optional[int] = 8,
@@ -16,6 +16,9 @@ class Simulation:
                  L_box: Optional[float] = 1.0,
                  timesteps: Optional[int] = 100,
                  delta_t: Optional[float] = 0.1,
+                 initial_state: Optional[np.ndarray] = None,
+                 periodic: Optional[bool] = True,
+                 solver_times: Optional[bool] = False,
                  seed: Optional[int] = 0):
         
         self.N = N
@@ -27,11 +30,14 @@ class Simulation:
         
         self.timesteps = timesteps
         self.delta_t = delta_t
+        self.periodic = periodic
+        self.solver_times = solver_times
 
         np.random.seed(seed)
-        initial_state = np.random.random(3*N)*L_box
-        initial_state[2::3] = initial_state[2::3]*2*np.pi/L_box
-        initial_state = initial_state.reshape(N, 3).T
+        if initial_state is None:
+            initial_state = np.random.random(3*N)*L_box
+            initial_state[2::3] = initial_state[2::3]*2*np.pi/L_box
+            initial_state = initial_state.reshape(N, 3).T
         self.positions = np.zeros(shape=(self.timesteps, 3, self.N))
         self.positions[0] = initial_state
         self.pos_absolute = np.zeros(shape=(self.timesteps, 3, self.N))
@@ -49,8 +55,9 @@ class Simulation:
 
         dx = x[:, None] - x[None, :]
         dy = y[:, None] - y[None, :]
-        dx = dx - self.L_box * np.round(dx/self.L_box)  # Periodic boundary for x
-        dy = dy - self.L_box * np.round(dy/self.L_box)  # Periodic boundary for y
+        if self.periodic:
+            dx = dx - self.L_box * np.round(dx/self.L_box)  # Periodic boundary for x
+            dy = dy - self.L_box * np.round(dy/self.L_box)  # Periodic boundary for y
         distances = np.sqrt(dx**2 + dy**2)
 
         neighbor_mask = (distances < self.couple_radius) & (distances > 0)
@@ -70,30 +77,55 @@ class Simulation:
         positions[2::3] = positions[2::3] % (2*np.pi)
         return positions
     
-    def solve_dynamics(self, method: Optional[str] = 'RK45'):
+    def solve_dynamics(self, method: Optional[str] = 'RK45', max_time: Optional[float] = 1):
 
-        for i, t in enumerate(tqdm(self.times[:-1], leave=False, desc='Simulation')):
-            derivatives = self.particle_system(t, self.positions[i].T.reshape(3*self.N))
-            if method == 'Euler':
-                next_state = self.positions[i].T.reshape(3*self.N) + self.delta_t * derivatives
+        if self.periodic:
+            for i, t in enumerate(tqdm(self.times[:-1], leave=False, desc='Simulation')):
+                derivatives = self.particle_system(t, self.positions[i].T.reshape(3*self.N))
+                if method == 'Euler':
+                    next_state = self.positions[i].T.reshape(3*self.N) + self.delta_t * derivatives
+                elif method == 'Backward Euler':
+
+                    def equation(y):
+                        return y - self.positions[i].T.reshape(3*self.N) - self.delta_t * self.particle_system(t + self.delta_t, y)
+
+                    initial_guess = self.positions[i].T.reshape(3*self.N)
+                    x = root(equation, initial_guess, method='lm')
+                    next_state = x.x
+                else:
+                    sol = solve_ivp(self.particle_system, 
+                                    t_span=(t, t+self.delta_t), 
+                                    y0=self.positions[i].T.reshape(3*self.N),
+                                    t_eval=[t+self.delta_t], 
+                                    method=method)
+                    next_state = sol.y[:, -1]
+                self.pos_absolute[i+1] = next_state.reshape(self.N, 3).T
+                next_state = self.apply_periodic_boundary(next_state)
+                self.positions[i+1] = next_state.reshape(self.N, 3).T
+                self.derivatives[i] = derivatives.reshape(self.N, 3).T
+        
+        else:
+            if self.solver_times:
+                sol = solve_ivp(self.particle_system, 
+                                        t_span=(0, 1), 
+                                        y0=self.positions[0].T.reshape(3*self.N),
+                                        method=method)
+                self.times = sol.t
             else:
                 sol = solve_ivp(self.particle_system, 
-                                t_span=(t, t+self.delta_t), 
-                                y0=self.positions[i].T.reshape(3*self.N),
-                                t_eval=[t+self.delta_t], 
-                                method=method)
-                next_state = sol.y[:, -1]
-            self.pos_absolute[i+1] = next_state.reshape(self.N, 3).T
-            next_state = self.apply_periodic_boundary(next_state)
-            self.positions[i+1] = next_state.reshape(self.N, 3).T
-            self.derivatives[i] = derivatives.reshape(self.N, 3).T
+                                        t_span=(0, self.times[-1]), 
+                                        y0=self.positions[0].T.reshape(3*self.N),
+                                        t_eval=self.times, 
+                                        method=method)
+            self.pos_absolute = (sol.y).T.reshape(-1, self.N, 3).transpose((0, 2, 1))
+            self.positions = (sol.y).T.reshape(-1, self.N, 3).transpose((0, 2, 1))
     
-    def create_animation(self, timesteps: Optional[int] = 100, filename: Optional[str] = None):
+    def create_animation(self, timesteps: Optional[int] = 100, filename: Optional[str] = None, axis_offset: Optional[float] = 0.0):
         times, positions = self.get_solution()
         f = plt.figure(figsize=(6, 5))
         ax = f.add_subplot(111)
-        ax.set_xlim(0, self.L_box)
-        ax.set_ylim(0, self.L_box)
+        ax.set_xlim(0-axis_offset, self.L_box+axis_offset)
+        ax.set_ylim(0-axis_offset, self.L_box+axis_offset)
         ax.set_xlabel(r'$x$')
         ax.set_ylabel(r'$y$')
         ax.set_title(r'Time: 0.0')
@@ -129,10 +161,14 @@ class InfiniteSimulation(Simulation):
                  L_box: Optional[float] = 1.0,
                  timesteps: Optional[int] = 100,
                  delta_t: Optional[float] = 0.1,
+                 initial_state: Optional[np.ndarray] = None,
+                 periodic: Optional[bool] = True,
+                 solver_times: Optional[bool] = False,
                  seed: Optional[int] = 0):
         super().__init__(N=N, v0=v0, rot_rate=rot_rate, rot_couple=rot_couple,
                          couple_radius=np.inf, L_box=L_box, timesteps=timesteps,
-                         delta_t=delta_t, seed=seed)
+                         delta_t=delta_t, initial_state=initial_state, 
+                         periodic=periodic, solver_times=solver_times, seed=seed)
         
     def particle_system(self, t, positions):
         positions = positions.reshape(self.N, 3).T
@@ -144,8 +180,9 @@ class InfiniteSimulation(Simulation):
 
         dx = x[:, None] - x[None, :]
         dy = y[:, None] - y[None, :]
-        dx = dx - self.L_box * np.round(dx/self.L_box)  # Periodic boundary for x
-        dy = dy - self.L_box * np.round(dy/self.L_box)  # Periodic boundary for y
+        if self.periodic:
+            dx = dx - self.L_box * np.round(dx/self.L_box)  # Periodic boundary for x
+            dy = dy - self.L_box * np.round(dy/self.L_box)  # Periodic boundary for y
         distances = np.sqrt(dx**2 + dy**2)
 
         weights = 1/(distances**1 + 1e-10)
@@ -174,10 +211,15 @@ class StiffSimulation(Simulation):
                  L_box: Optional[float] = 1.0,
                  timesteps: Optional[int] = 100,
                  delta_t: Optional[float] = 0.1,
-                 seed: Optional[int] = 0):
+                 initial_state: Optional[np.ndarray] = None,
+                 periodic: Optional[bool] = True,
+                 solver_times: Optional[bool] = False,
+                 seed: Optional[int] = 0,):
         super().__init__(N=N, v0=v0, rot_rate=rot_rate, rot_couple=rot_couple,
                          couple_radius=couple_radius, L_box=L_box, timesteps=timesteps,
-                         delta_t=delta_t, seed=seed)
+                         delta_t=delta_t, initial_state=initial_state, 
+                         solver_times=solver_times,
+                         periodic=periodic, seed=seed)
         self.epsilon = epsilon
         self.sigma = sigma
     
@@ -214,8 +256,9 @@ class StiffSimulation(Simulation):
 
         dx = x[:, None] - x[None, :]
         dy = y[:, None] - y[None, :]
-        dx = dx - self.L_box * np.round(dx/self.L_box)  # Periodic boundary for x
-        dy = dy - self.L_box * np.round(dy/self.L_box)  # Periodic boundary for y
+        if self.periodic:
+            dx = dx - self.L_box * np.round(dx/self.L_box)  # Periodic boundary for x
+            dy = dy - self.L_box * np.round(dy/self.L_box)  # Periodic boundary for y
         distances = np.sqrt(dx**2 + dy**2)
 
         neighbor_mask = (distances < self.couple_radius) & (distances > 0)
@@ -232,3 +275,11 @@ class StiffSimulation(Simulation):
         dthetadt = self.rot_rate + self.rot_couple * interaction
         derivative = np.vstack([dxdt, dydt, dthetadt])
         return derivative.T.reshape(3*self.N)
+
+def set_param(param, N, default):
+    if param is None:
+        return np.ones(N)*default
+    elif isinstance(param, (float, int)):
+        return np.ones(N)*param
+    else:
+        return param

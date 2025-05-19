@@ -1,19 +1,33 @@
 from simulation import Simulation, InfiniteSimulation, StiffSimulation
 
 import numpy as np
+np.random.seed(0)
 
 if __name__ == '__main__':
 
-    N = 110
-    N_passive = 40
+    N = 40
+    N_passive = 0
     rot_rate = np.ones(N)
     rot_rate[:N_passive] = np.zeros(N_passive)
     v0 = np.ones(N)*0.1
     v0[:N_passive] = np.zeros(N_passive)
-    rot_couple = np.ones(N)*0.1
+    rot_couple = np.ones(N)*0
     rot_couple[:N_passive] = np.zeros(N_passive)
-    sim = StiffSimulation(N=N, v0=v0, L_box=1.0, delta_t=0.1, rot_couple=rot_couple, epsilon=0.1, sigma=0.025, rot_rate=rot_rate, timesteps=200, seed=0)
-    sim.solve_dynamics(method='RK45')
-    sim.create_animation(filename=None, timesteps=200)
-    _, loc = sim.get_solution_abs()
-    #np.save(f'./data_col_norot/test_200.npy', loc)
+    initial_state = np.random.random(3*N)
+    initial_state[2::3] = initial_state[2::3]*2*np.pi
+    initial_state[0::3] = initial_state[0::3]
+    initial_state[1::3] = initial_state[1::3]
+    initial_state[2:N_passive*3:3] = initial_state[2:N_passive*3:3]*0
+    initial_state = initial_state.reshape(N, 3).T
+    sim = StiffSimulation(N=N, v0=v0, L_box=1.0,
+                           delta_t=0.1, 
+                           rot_couple=rot_couple, 
+                           rot_rate=rot_rate, 
+                           sigma=0.025,
+                           epsilon=0.1, couple_radius=0, timesteps=100, seed=0, periodic=False, solver_times=True,
+                             initial_state=initial_state)
+    sim.solve_dynamics(method='Radau', max_time=1)
+    times, loc = sim.get_solution_abs()
+    sim.create_animation(filename='test.gif', timesteps=len(times), axis_offset=0)
+    print(times)
+    #np.save(f'./data_col_sc/test2.npy', loc)
