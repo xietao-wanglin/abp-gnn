@@ -6,6 +6,6 @@
 #SBATCH --mem-per-cpu=3700
 
 export TQDM_DISABLE=1
-module load GCCcore/13.3.0 Python/3.12.3
+module load GCCcore/13.2.0 Python/3.11.5
 
-srun python ./create_data.py
+srun python ./train.py

@@ -71,16 +71,23 @@ def process_simulation_data(simulation_list: List,
         times = times_list[idx]
 
         if not torch.is_tensor(sim):
-            sim = torch.tensor(sim, dtype=dtype)
+            sim = torch.tensor(sim, dtype=dtype, device=device)
         if not torch.is_tensor(times):
-            times = torch.tensor(times, dtype=dtype)
+            times = torch.tensor(times, dtype=dtype, device=device)
 
         x = sim[0] # Features
         y = sim[1:][:, :2, :] # Labels
         t = times[1:] # Collocation times
 
         edge_index, edge_attr = compute_graph(x, method=cluster_method, p=p, device=device)
-        data_pairs.append((x.T, y.permute(0, 2, 1), t, edge_index, edge_attr))
+        data = Data(
+            x=x.T.to(device),
+            y=y.permute(0, 2, 1).to(device),
+            t=t.to(device),
+            edge_index=edge_index.to(device),
+            edge_attr=edge_attr.to(device)
+        )
+        data_pairs.append(data)
     
     return data_pairs
 
@@ -177,16 +184,7 @@ class ParticleDataset(Dataset):
         return len(self.data_pairs)
     
     def get(self, idx):
-        x, y, t, edge_index, edge_attr = self.data_pairs[idx]
-        data = Data(
-            x=x,
-            edge_index=edge_index,
-            edge_attr=edge_attr,
-            y=y,
-            t=t
-        )
-        
-        return data
+        return self.data_pairs[idx]
 
 class RelativeL2Loss(nn.Module):
     def __init__(self, epsilon=1e-8, reduction='mean', weights=None):
