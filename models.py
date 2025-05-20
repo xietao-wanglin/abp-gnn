@@ -33,33 +33,25 @@ class GNN_Layer(MessagePassing):
         )
         
     def forward(self, x, edge_index, edge_attr, batch=None):
-        # x has shape [N, hidden_nf]
-        # edge_index has shape [2, E]
-        # edge_attr has shape [E, edge_nf]
+        # x: [N, hidden_nf]
+        # edge_index: [2, E]
+        # edge_attr:e [E, edge_nf]
         
         return self.propagate(edge_index, x=x, edge_attr=edge_attr, batch=batch)
     
-    def message(self, x_i, x_j, edge_attr) -> torch.Tensor:
-        # x_i has shape [E, hidden_nf]
-        # x_j has shape [E, hidden_nf]
-        # edge_attr has shape [E, edge_nf]
-        
-        edge_features = torch.cat([x_i, x_j, edge_attr], dim=-1)
+    def message(self, x_i, x_j, edge_attr):
+        edge_features = torch.cat([x_i, x_j, edge_attr], dim=-1) # Shape: [E, hidden_nf + hidden_nf + edge_nf]
         m_ij = self.edge_mlp(edge_features)
         return m_ij
     
     def update(self, aggr_out, x):
-        # aggr_out has shape [N, hidden_nf]
-        # x has shape [N, hidden_nf]
         if self.norm is not None:
             x_norm = self.norm(x)
         else:
             x_norm = x
         
-        node_features = torch.cat([x_norm, aggr_out], dim=-1)
+        node_features = torch.cat([x_norm, aggr_out], dim=-1) # Shape: [N, hidden_nf + hidden_nf]
         x_new = self.node_mlp(node_features)
-        
-        # Apply skip connection
         x_new = x + x_new
             
         return x_new
@@ -150,20 +142,18 @@ class GAT_Layer(nn.Module):
         self.dropout = nn.Dropout(dropout) if dropout > 0.0 else nn.Identity()
         self.norm = LayerNorm(hidden_nf) if norm else None
         
-        # Edge features processing
         self.edge_mlp = nn.Sequential(
             nn.Linear(edge_nf, hidden_nf),
             self.dropout,
             activation
         )
         
-        # GAT convolution
         self.conv = GATConv(
             hidden_nf, 
             hidden_nf, 
             heads=heads, 
             dropout=dropout,
-            concat=False  # Average heads instead of concatenating
+            concat=False
         )
         
         self.node_mlp = nn.Sequential(
@@ -369,7 +359,6 @@ class LatentGNN(nn.Module):
                  dropout=0.0, 
                  norm=True):
         super(LatentGNN, self).__init__()
-        # latent_dim => x_dim
         
         self.n_layers = n_layers
         self.ic_encoder = GraphEncoder(n_layers, in_node_nf, latent_nf, in_edge_nf, hidden_nf, activation, device, dropout, norm)
@@ -378,75 +367,26 @@ class LatentGNN(nn.Module):
         
         self.time_encoder = TimeEncoder(n_layers, 1+in_node_nf, latent_nf, in_edge_nf, hidden_nf, activation, device, dropout, norm)
         
-        self.decoder = GraphEncoder(n_layers, 
-                                    latent_nf, # Input feature dimension for the decoder GNN
-                                    out_node_nf, # Output feature dimension for the decoder GNN
-                                    in_edge_nf, 
-                                    hidden_nf, 
-                                    activation, 
-                                    device, 
-                                    dropout, 
-                                    norm)
+        self.decoder = nn.Sequential(
+            nn.Linear(latent_nf, hidden_nf),
+            activation,
+            nn.Linear(hidden_nf, hidden_nf),
+            activation,
+            nn.Linear(hidden_nf, out_node_nf)
+        )
         
         self.to(device)
     
     def forward(self, data, t):
-        original_edge_index, original_edge_attr = data.edge_index, data.edge_attr
-        original_batch = data.batch
-        original_num_graphs = getattr(data, 'num_graphs', 1) # Default to 1 if not explicitly given (e.g., single graph input)
-        e = self.ic_encoder(data) # (x_dim,) -> (latent_dim,)
-        c = self.vel_encoder(data) # (x_dim,) -> (latent_dim,) 
-        tau = self.time_encoder(data, t) # (x_dim, T) -> (latent_dim, T)
+        e = self.ic_encoder(data) # (N, x_dim) -> (N, latent_dim)
+        c = self.vel_encoder(data) # (N, x_dim) -> (N, latent_dim) 
+        tau = self.time_encoder(data, t) # (N, T, x_dim) -> (N, T, latent_dim)
 
-        y = e.unsqueeze(0) + tau * c.unsqueeze(0)  # (latent_dim,) + (latent_dim, T)*(latent_dim,) -> (latent_dim, T)
-
-        T = t.size(0) # Number of time steps
-        N = data.x.size(0) # Total number of nodes in the original input batch (sum of nodes across all graphs)
-
-        # Flatten y for GNN input: each node feature at each time step becomes a "node" in a larger graph batch
-        y_flat = y.view(T * N, -1) # Shape: (T * N, latent_nf)
-
-        # Adjust edge_index for the flattened batch of (T * original_N) nodes
-        # This replicates the graph structure for each time step and shifts node indices
-        num_original_edges = original_edge_index[0].shape[0]
-        cumsum = torch.arange(0, T, device=y.device) * N # Shift for node indices
-        cumsum_edges = cumsum.repeat_interleave(num_original_edges, dim=0) # Apply shift to each edge
-
-        edge_index_decoder = torch.stack([
-            original_edge_index[0].repeat(T) + cumsum_edges,
-            original_edge_index[1].repeat(T) + cumsum_edges
-        ], dim=0)
-        
-        # Edge attributes are also repeated for each time step's graph copy
-        edge_attr_decoder = original_edge_attr.repeat(T, 1)
-
-        # Adjust batch vector for the flattened batch
-        batch_decoder = None
-        if original_batch is not None:
-            batch_repeated = original_batch.unsqueeze(0).repeat(T, 1) # (T, N_total_original_batch)
-            shift_values = torch.arange(T, device=y.device).unsqueeze(1) * original_num_graphs # (T, 1)
-            batch_decoder = (batch_repeated + shift_values).view(-1) # (T * N_total_original_batch)
-        else:
-            # If original data had no batch, assume it was a single graph.
-            # Now we have T copies of that graph, so create a batch vector assigning each node to its graph copy.
-            batch_decoder = torch.arange(T, device=y.device).repeat_interleave(N) # (T*N)
-
-        # Create a temporary PyTorch Geometric Data object for the GNN decoder
-        # This allows the GraphEncoder to operate on the expanded data
-        num_graphs_decoder = T * original_num_graphs # Total number of graphs in the decoder's batch
-        
-        temp_data_for_decoder = Data(
-            x=y_flat, 
-            edge_index=edge_index_decoder, 
-            edge_attr=edge_attr_decoder, 
-            batch=batch_decoder,
-            num_graphs=num_graphs_decoder 
-        )
-
-        # Pass through the GNN decoder
-        decoded_y_flat = self.decoder(temp_data_for_decoder) # Shape: (T * N, out_node_nf)
-
-        # Reshape the output back to (T, N, out_node_nf)
-        x = decoded_y_flat.view(T, N, -1)  # (latent_dim, T) -> (x_dim, T)
+        y = e.unsqueeze(0) + tau * c.unsqueeze(0)  # (N, latent_dim) + (T, N, latent_dim)*(N, latent_dim) -> (T, N, latent_dim)
+        N = data.x.size(0)
+        T = t.size(0)
+        y_flat = y.view(T*N, -1)  # (T, N, latent_nf) -> (T*N, latent_nf)
+        x_flat = self.decoder(y_flat)  # (T*N, latent_nf) -> (T*N, out_node_nf)
+        x = x_flat.view(T, N, -1) # (T*N, out_node_nf) -> (T, N, out_node_nf)
 
         return x

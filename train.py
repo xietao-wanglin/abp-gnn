@@ -130,6 +130,7 @@ def train(model: nn.Module,
     optimizer = AdamW(model.parameters(), lr=lr, weight_decay=weight_decay)
     scheduler = ReduceLROnPlateau(optimizer, mode='min', factor=0.5, patience=6, threshold=1e-4)
     criterion = nn.MSELoss(reduction='none')
+    metric = nn.L1Loss(reduction='none')
     train_details = {
         'optimizer': str(optimizer),
         'scheduler': str(scheduler),
@@ -145,7 +146,9 @@ def train(model: nn.Module,
     
     history = {
         'train_loss': [],
+        'train_metric': [],
         'val_loss': [],
+        'val_metric': [],
         'best_val_loss': float('inf')
     }
 
@@ -160,6 +163,7 @@ def train(model: nn.Module,
     for epoch in range(initial_epoch, n_epochs+initial_epoch):
         model.train()
         train_losses = []
+        train_metrics = []
 
         pbar = tqdm(train_loader, desc=f'Epoch {epoch+1}/{n_epochs+initial_epoch}')
         for batch_idx, batch in enumerate(pbar):
@@ -170,19 +174,23 @@ def train(model: nn.Module,
             t = batch.t
             pred = model(batch, t)
             loss = criterion(pred, y).mean()
+            metric_train = metric(pred, y).mean()
             optimizer.zero_grad()
             loss.backward()
             optimizer.step()
             wandb.log(
-                {'train_batch_loss': loss.item(), 
+                {'train_batch_loss': loss.item(),
+                 'train_batch_metric': metric_train.item(), 
                     'epoch': epoch, 
                     'batch': batch_idx}
                 )
             pbar.set_postfix({'loss': f'{loss.item():.6f}'})
             train_losses.append(loss.item())
+            train_metrics.append(metric_train.item())
         
         model.eval()
         val_losses = []
+        val_metrics = []
         with torch.no_grad():
             for batch in val_loader:
                 batch = batch.to(device)
@@ -190,18 +198,27 @@ def train(model: nn.Module,
                 t = batch.t
                 pred = model(batch, t)
                 loss = criterion(pred, y).mean()
+                metric_val = metric(pred, y).mean()
                 val_losses.append(loss.item())
+                val_metrics.append(metric_val.item())
         
         avg_train_loss = np.mean(train_losses)
         avg_val_loss = np.mean(val_losses)
+
+        avg_train_metric = np.mean(train_metrics)
+        avg_val_metric = np.mean(val_metrics)
         
         history['train_loss'].append(avg_train_loss)
         history['val_loss'].append(avg_val_loss)
+        history['train_metric'].append(avg_train_metric)
+        history['val_metric'].append(avg_val_metric)
         #scheduler.step(avg_val_loss)
         wandb.log({
             'epoch': epoch + 1,
             'train_loss': avg_train_loss,
+            'train_metric': avg_train_metric, 
             'val_loss': avg_val_loss,
+            'val_metric': avg_val_metric,
             'lr': scheduler.get_last_lr()[0]
         })
         
@@ -251,14 +268,14 @@ def train(model: nn.Module,
 if __name__ == '__main__':
 
     model = LatentGNN(
-        n_layers=10,
+        n_layers=4,
         in_node_nf=3,
-        out_node_nf=3,
-        latent_nf=10,
+        out_node_nf=2,
+        latent_nf=64,
         in_edge_nf=0,
-        hidden_nf=128,
+        hidden_nf=16,
         device=device,
-        norm=True,
+        norm=False,
         activation=nn.SiLU()
     ).to(dtype=dtype)
 
@@ -268,9 +285,10 @@ if __name__ == '__main__':
         cluster_parameter=0.1,
         data_loc='data',
         batch_size=1,
-        n_epochs=200,
-        lr=3e-4,
-        weight_decay=1e-4,
+        checkpoint_every=100,
+        n_epochs=10000,
+        lr=1e-5,
+        weight_decay=1e-8,
         device=device,
         base_model_path=None
     )

@@ -76,7 +76,7 @@ def process_simulation_data(simulation_list: List,
             times = torch.tensor(times, dtype=dtype)
 
         x = sim[0] # Features
-        y = sim[1:] # Labels
+        y = sim[1:][:, :2, :] # Labels
         t = times[1:] # Collocation times
 
         edge_index, edge_attr = compute_graph(x, method=cluster_method, p=p, device=device)
@@ -201,8 +201,8 @@ class RelativeL2Loss(nn.Module):
             self.weights = torch.tensor(weights)
 
     def forward(self, y_pred, y_true):
-        numerator = torch.sum((self.weights*y_pred - self.weights*y_true) ** 2, dim=-1)
-        denominator = torch.sum((self.weights*y_true) ** 2, dim=-1) + self.epsilon
+        numerator = (self.weights*y_pred - self.weights*y_true) ** 2
+        denominator = (self.weights*y_true) ** 2 + self.epsilon
         rel_l2 = numerator / denominator
 
         if self.reduction == 'mean':
