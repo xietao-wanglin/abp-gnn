@@ -359,8 +359,18 @@ class LatentGNN(nn.Module):
                  dropout=0.0, 
                  norm=True):
         super(LatentGNN, self).__init__()
+
+        self.name = 'LatentGNN'
         
         self.n_layers = n_layers
+        self.in_node_nf = in_node_nf
+        self.out_node_nf = out_node_nf
+        self.latent_nf = latent_nf
+        self.in_edge_nf = in_edge_nf
+        self.hidden_nf = hidden_nf
+        self.activation = activation
+        self.dropout = dropout
+        self.norm = norm
         self.ic_encoder = GraphEncoder(n_layers, in_node_nf, latent_nf, in_edge_nf, hidden_nf, activation, device, dropout, norm)
 
         self.vel_encoder = GraphEncoder(n_layers, in_node_nf, latent_nf, in_edge_nf, hidden_nf, activation, device, dropout, norm)

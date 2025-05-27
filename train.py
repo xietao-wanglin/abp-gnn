@@ -19,7 +19,8 @@ from typing import Optional, List, Dict
 device = torch.accelerator.current_accelerator().type if torch.accelerator.is_available() else 'cpu'
 print(f'Using {device} device')
 dtype = torch.float
-torch.manual_seed(0)
+seed = 0
+torch.manual_seed(seed)
 wandb.login()
 
 def train(model: nn.Module, 
@@ -64,10 +65,6 @@ def train(model: nn.Module,
         Save checkpoint every N epochs, default is 10.
     hist_filename: str, optional
         Name of training history JSON file, defualt is 'training_history'.
-    subset: bool, optional
-        If True, use a subset of the trajectories instead of full simulations, default is False.
-    subset_samples: List, optional
-        If provided, samples to choose from trajectories if `subset=True`, otherwise random, default is None.
     base_model_path: str, optional
         If provided, use path model to load weights, default is None.
     
@@ -76,16 +73,6 @@ def train(model: nn.Module,
     history: Dict
         Training history.
     """
-    
-    wandb.init(
-        project='ABP_GNN', 
-        config={
-            'lr': lr,
-            'n_epochs': n_epochs,
-            'weight_decay': weight_decay,
-            'model': str(model),
-        }
-    )
 
     os.makedirs(checkpoint_dir, exist_ok=True)
 
@@ -126,17 +113,43 @@ def train(model: nn.Module,
         test_dataset,
         batch_size=batch_size,
     )
-    
+
     optimizer = AdamW(model.parameters(), lr=lr, weight_decay=weight_decay)
-    scheduler = ReduceLROnPlateau(optimizer, mode='min', factor=0.5, patience=6, threshold=1e-4)
+    scheduler = None
     criterion = nn.MSELoss(reduction='none')
     metric = nn.L1Loss(reduction='none')
+
+    activation = getattr(model, 'activation', None)
     train_details = {
-        'optimizer': str(optimizer),
-        'scheduler': str(scheduler),
-        'criterion': str(criterion),
-        'model': str(model)
+        'optimizer': optimizer.__class__.__name__,
+        'scheduler': scheduler.__class__.__name__ if scheduler else None,
+        'criterion': criterion.__class__.__name__,
+        'metric': metric.__class__.__name__,
+        'model': getattr(model,'name', None),
+        'n_parameters': sum(p.numel() for p in model.parameters()),
+        'lr': lr,
+        'n_epochs': n_epochs,
+        'weight_decay': weight_decay,
+        'batch_size': batch_size,
+        'n_layers': getattr(model,'n_layers', None),
+        'in_node_nf': getattr(model,'in_node_nf', None),
+        'out_node_nf': getattr(model,'out_node_nf', None),
+        'latent_nf': getattr(model,'latent_nf', None),
+        'in_edge_nf': getattr(model,'in_edge_nf', None),
+        'hidden_nf': getattr(model,'hidden_nf', None),
+        'activation': activation.__class__.__name__ if activation is not None else None,
+        'dropout': getattr(model,'dropout', None),
+        'norm': getattr(model,'norm', None),
+        'cluster_method': cluster_method,
+        'cluster_parameter': cluster_parameter,
+        'data_loc': data_loc,
+        'train_samples': len(train_glob),
+        'test_samples': len(test_glob),
     }
+    wandb.init(
+        project='ABP_GNN', 
+        config=train_details
+    )
 
     details_path = os.path.join(checkpoint_dir, f'details.json')
     with open(details_path, 'w') as f:
@@ -157,7 +170,8 @@ def train(model: nn.Module,
         params = torch.load(base_model_path, map_location=device, weights_only=False)
         model.load_state_dict(params['model_state_dict'])
         optimizer.load_state_dict(params['optimizer_state_dict'])
-        scheduler.load_state_dict(params['scheduler_state_dict'])
+        if scheduler and params['scheduler_state_dict']:
+            scheduler.load_state_dict(params['scheduler_state_dict'])
         initial_epoch = params['epoch']
     
     for epoch in range(initial_epoch, n_epochs+initial_epoch):
@@ -181,8 +195,7 @@ def train(model: nn.Module,
             wandb.log(
                 {'train_batch_loss': loss.item(),
                  'train_batch_metric': metric_train.item(), 
-                    'epoch': epoch, 
-                    'batch': batch_idx}
+                 'epoch': epoch}
                 )
             pbar.set_postfix({'loss': f'{loss.item():.6f}'})
             train_losses.append(loss.item())
@@ -212,14 +225,15 @@ def train(model: nn.Module,
         history['val_loss'].append(avg_val_loss)
         history['train_metric'].append(avg_train_metric)
         history['val_metric'].append(avg_val_metric)
-        #scheduler.step(avg_val_loss)
+        if scheduler is not None:
+            scheduler.step()
         wandb.log({
             'epoch': epoch + 1,
             'train_loss': avg_train_loss,
             'train_metric': avg_train_metric, 
             'val_loss': avg_val_loss,
             'val_metric': avg_val_metric,
-            'lr': scheduler.get_last_lr()[0]
+            'lr': scheduler.get_last_lr()[0] if scheduler else lr
         })
         
         if avg_val_loss < history['best_val_loss']:
@@ -229,7 +243,7 @@ def train(model: nn.Module,
                 'epoch': epoch,
                 'model_state_dict': model.state_dict(),
                 'optimizer_state_dict': optimizer.state_dict(),
-                'scheduler_state_dict': scheduler.state_dict(),
+                'scheduler_state_dict': scheduler.state_dict() if scheduler else None,
                 'train_loss': avg_train_loss,
                 'val_loss': avg_val_loss
             }, checkpoint_path)
@@ -241,7 +255,7 @@ def train(model: nn.Module,
                 'epoch': epoch,
                 'model_state_dict': model.state_dict(),
                 'optimizer_state_dict': optimizer.state_dict(),
-                'scheduler_state_dict': scheduler.state_dict(),
+                'scheduler_state_dict': scheduler.state_dict() if scheduler else None,
                 'train_loss': avg_train_loss,
                 'val_loss': avg_val_loss,
             }, checkpoint_path)
@@ -283,10 +297,10 @@ if __name__ == '__main__':
         model=model,
         cluster_method='radius',
         cluster_parameter=0.1,
-        data_loc='data',
+        data_loc='data_stable',
         batch_size=1,
-        checkpoint_every=100,
-        n_epochs=10000,
+        checkpoint_every=20,
+        n_epochs=2,
         lr=1e-5,
         weight_decay=1e-8,
         device=device,
