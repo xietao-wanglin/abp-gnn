@@ -2,6 +2,7 @@ import numpy as np
 import torch
 from torch import nn
 from torch_geometric.data import Dataset, Data
+from torch_cluster import radius_graph
 
 from typing import Optional, List, Tuple
 
@@ -150,20 +151,12 @@ def compute_graph(x: torch.Tensor,
         row_indices = torch.arange(xy.shape[0], device=device).repeat_interleave(k)
         col_indices = indices.flatten()
         edge_index = torch.stack([row_indices, col_indices])
+    elif method == 'np_radius':
+        edge_index = radius_graph(x, r=p)
     else:
-        raise ValueError("Invalid method, must be either 'radius' or 'knn'")
-
-    row, col = edge_index
-    angle_diff = theta[row] - theta[col] 
-    sin_diff = torch.sin(angle_diff).unsqueeze(1)
-    rel_pos_raw = xy[row] - xy[col]
-    rel_pos = rel_pos_raw - torch.round(rel_pos_raw)
-    rel_dist = torch.norm(rel_pos, dim=-1, keepdim=True)
-    rel_encoding = torch.cat([rel_pos, rel_dist], dim=-1)
-    #edge_attr = torch.cat([sin_diff, rel_encoding], dim=-1) # Relative encoding
-    #edge_attr = sin_diff # Only use phase difference
+        raise ValueError("Invalid method, must be either 'radius', 'knn' or 'np_radius'")
+    
     edge_attr = torch.zeros(edge_index.shape[1], 0).to(device) # Empty edges
-    #edge_attr = rel_dist
  
     return edge_index, edge_attr
     
