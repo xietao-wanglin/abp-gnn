@@ -1,4 +1,4 @@
-from simulation import Simulation, InfiniteSimulation
+from src.simulation import Simulation, InfiniteSimulation
 
 import numpy as np
 from tqdm import tqdm

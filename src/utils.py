@@ -6,7 +6,7 @@ from torch_cluster import radius_graph
 
 from typing import Optional, List, Tuple
 
-from simulation import Simulation, StiffSimulation
+from src.simulation import Simulation, StiffSimulation
 
 def apply_periodic_boundary(positions: torch.Tensor, dims: Optional[List] = None) -> torch.Tensor:
     """

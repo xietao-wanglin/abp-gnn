@@ -1,4 +1,4 @@
-from simulation import Simulation, InfiniteSimulation, StiffSimulation
+from src.simulation import Simulation, InfiniteSimulation, StiffSimulation
 
 import numpy as np
 from tqdm import tqdm
@@ -37,8 +37,8 @@ if __name__ == '__main__':
                               initial_state=initial_state, periodic=False, solver_times=True)
         sim.solve_dynamics(method='Radau', max_time=0.1)
         times, loc = sim.get_solution_abs()
-        np.save(f'./data_stable/simulation_train_{i}.npy', loc)
-        np.save(f'./data_stable/times_train_{i}.npy', times)
+        np.save(f'./data/stable/simulation_train_{i}.npy', loc)
+        np.save(f'./data/stable/times_train_{i}.npy', times)
     
     for i in tqdm(range(test_init, test_sims+test_init), desc='Test Set'):
         np.random.seed(98743*i+4500)
@@ -49,5 +49,5 @@ if __name__ == '__main__':
                               initial_state=initial_state, periodic=False, solver_times=True)
         sim.solve_dynamics(method='Radau', max_time=0.1)
         times, loc = sim.get_solution_abs()
-        np.save(f'./data_stable/simulation_test_{i}.npy', loc)
-        np.save(f'./data_stable/times_test_{i}.npy', times)
+        np.save(f'./data/stable/simulation_test_{i}.npy', loc)
+        np.save(f'./data/stable/times_test_{i}.npy', times)

@@ -1,5 +1,5 @@
-from ...models import GNN, GAT, LatentGNN
-from ...utils import process_simulation_data, ParticleDataset, RelativeL2Loss
+from src.models import GNN, GAT, LatentGNN
+from src.utils import process_simulation_data, ParticleDataset, RelativeL2Loss
 
 import torch
 import torch.nn as nn
@@ -74,12 +74,16 @@ def train(model: nn.Module,
         Training history.
     """
 
-    os.makedirs(checkpoint_dir, exist_ok=True)
+    script_dir = os.path.dirname(os.path.abspath(__file__))
+    checkpoint_dir = os.path.join(script_dir, checkpoint_dir)
 
-    train_glob = sorted(glob(f'./{data_loc}/simulation_train_*'))
-    test_glob = sorted(glob(f'./{data_loc}/simulation_test_*'))
-    times_train_glob = sorted(glob(f'./{data_loc}/times_train_*'))
-    times_test_glob = sorted(glob(f'./{data_loc}/times_test_*'))
+    os.makedirs(checkpoint_dir, exist_ok=True)
+    data_path = os.path.join(os.getcwd(), 'data')
+
+    train_glob = sorted(glob(f'{data_path}/{data_loc}/simulation_train_*'))
+    test_glob = sorted(glob(f'{data_path}/{data_loc}/simulation_test_*'))
+    times_train_glob = sorted(glob(f'{data_path}/{data_loc}/times_train_*'))
+    times_test_glob = sorted(glob(f'{data_path}/{data_loc}/times_test_*'))
 
     train_simulations = [np.load(sim) for sim in train_glob]
     test_simulations = [np.load(sim) for sim in test_glob]
@@ -247,7 +251,7 @@ def train(model: nn.Module,
                 'train_loss': avg_train_loss,
                 'val_loss': avg_val_loss
             }, checkpoint_path)
-            wandb.save(checkpoint_path)
+            wandb.save(checkpoint_path, base_path=script_dir)
         
         if (epoch + 1) % checkpoint_every == 0:
             checkpoint_path = os.path.join(checkpoint_dir, f'model_epoch_{epoch+1}.pt')
@@ -259,7 +263,7 @@ def train(model: nn.Module,
                 'train_loss': avg_train_loss,
                 'val_loss': avg_val_loss,
             }, checkpoint_path)
-            wandb.save(checkpoint_path)
+            wandb.save(checkpoint_path, base_path=script_dir)
         
         print(f'\nEpoch {epoch+1}/{n_epochs+initial_epoch}')
         print(f'Train Loss: {avg_train_loss:.8f}')
@@ -297,7 +301,7 @@ if __name__ == '__main__':
         model=model,
         cluster_method='radius',
         cluster_parameter=0.1,
-        data_loc='data_stable',
+        data_loc='stable',
         batch_size=1,
         checkpoint_every=20,
         n_epochs=2,

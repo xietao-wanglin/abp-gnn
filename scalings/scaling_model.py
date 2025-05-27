@@ -4,8 +4,8 @@ import torch
 
 import time
 
-from models import GNN
-from utilities import compute_graph, apply_periodic_boundary
+from src.models import GNN
+from src.utils import compute_graph, apply_periodic_boundary
 
 device = 'cpu'
 dtype = torch.float

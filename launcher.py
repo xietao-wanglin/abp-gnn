@@ -1,4 +1,4 @@
-from simulation import Simulation, InfiniteSimulation, StiffSimulation
+from src.simulation import Simulation, InfiniteSimulation, StiffSimulation
 from create_data import generate_state
 
 import numpy as np
