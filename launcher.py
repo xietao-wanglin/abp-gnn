@@ -1,11 +1,11 @@
 from simulation import Simulation, InfiniteSimulation, StiffSimulation
+from create_data import generate_state
 
 import numpy as np
-np.random.seed(0)
 
 if __name__ == '__main__':
 
-    N = 40
+    N = 20
     N_passive = 0
     rot_rate = np.ones(N)
     rot_rate[:N_passive] = np.zeros(N_passive)
@@ -19,15 +19,15 @@ if __name__ == '__main__':
     initial_state[1::3] = initial_state[1::3]
     initial_state[2:N_passive*3:3] = initial_state[2:N_passive*3:3]*0
     initial_state = initial_state.reshape(N, 3).T
+    initial_state = generate_state(N=N, delta=0.1)
     sim = StiffSimulation(N=N, v0=v0, L_box=1.0,
                            delta_t=0.1, 
                            rot_couple=rot_couple, 
                            rot_rate=rot_rate, 
-                           sigma=0.025,
-                           epsilon=0.1, couple_radius=0, timesteps=100, seed=0, periodic=False, solver_times=True,
+                           sigma=0.025, couple_radius=0, timesteps=100, seed=0, periodic=False, solver_times=False,
                              initial_state=initial_state)
-    sim.solve_dynamics(method='Radau', max_time=1)
+    sim.solve_dynamics(method='Radau', max_time=0.1)
     times, loc = sim.get_solution_abs()
-    sim.create_animation(filename='test.gif', timesteps=len(times), axis_offset=0)
-    print(times)
-    #np.save(f'./data_col_sc/test2.npy', loc)
+    sim.create_animation(filename=None, timesteps=len(times), axis_offset=0)
+    print(times, len(times))
+    #np.save(f'./data/test_2.npy', loc)

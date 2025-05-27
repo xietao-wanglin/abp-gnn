@@ -107,7 +107,7 @@ class Simulation:
         else:
             if self.solver_times:
                 sol = solve_ivp(self.particle_system, 
-                                        t_span=(0, 1), 
+                                        t_span=(0, max_time), 
                                         y0=self.positions[0].T.reshape(3*self.N),
                                         method=method)
                 self.times = sol.t
@@ -256,9 +256,9 @@ class StiffSimulation(Simulation):
 
         dx = x[:, None] - x[None, :]
         dy = y[:, None] - y[None, :]
-        if self.periodic:
-            dx = dx - self.L_box * np.round(dx/self.L_box)  # Periodic boundary for x
-            dy = dy - self.L_box * np.round(dy/self.L_box)  # Periodic boundary for y
+        # if self.periodic:
+        dx = dx - self.L_box * np.round(dx/self.L_box)  # Periodic boundary for x
+        dy = dy - self.L_box * np.round(dy/self.L_box)  # Periodic boundary for y
         distances = np.sqrt(dx**2 + dy**2)
 
         neighbor_mask = (distances < self.couple_radius) & (distances > 0)
