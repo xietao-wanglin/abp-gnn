@@ -1,5 +1,5 @@
-from models import GNN, GAT, LatentGNN
-from utils import process_simulation_data, ParticleDataset, RelativeL2Loss
+from ...models import GNN, GAT, LatentGNN
+from ...utils import process_simulation_data, ParticleDataset, RelativeL2Loss
 
 import torch
 import torch.nn as nn
