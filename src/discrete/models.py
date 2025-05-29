@@ -33,24 +33,18 @@ class GNN_Layer(MessagePassing):
         )
         
     def forward(self, x, edge_index, edge_attr, batch=None):
-        # x has shape [N, hidden_nf]
-        # edge_index has shape [2, E]
-        # edge_attr has shape [E, edge_nf]
+        # x: [N, hidden_nf]
+        # edge_index: [2, E]
+        # edge_attr: [E, edge_nf]
         
         return self.propagate(edge_index, x=x, edge_attr=edge_attr, batch=batch)
     
     def message(self, x_i, x_j, edge_attr) -> torch.Tensor:
-        # x_i has shape [E, hidden_nf]
-        # x_j has shape [E, hidden_nf]
-        # edge_attr has shape [E, edge_nf]
-        
         edge_features = torch.cat([x_i, x_j, edge_attr], dim=-1)
         m_ij = self.edge_mlp(edge_features)
         return m_ij
     
     def update(self, aggr_out, x):
-        # aggr_out has shape [N, hidden_nf]
-        # x has shape [N, hidden_nf]
         if self.norm is not None:
             x_norm = self.norm(x)
         else:
@@ -58,8 +52,6 @@ class GNN_Layer(MessagePassing):
         
         node_features = torch.cat([x_norm, aggr_out], dim=-1)
         x_new = self.node_mlp(node_features)
-        
-        # Apply skip connection
         x_new = x + x_new
             
         return x_new
@@ -77,8 +69,18 @@ class GNN(nn.Module):
                  dropout=0.0, 
                  norm=True):
         super(GNN, self).__init__()
+
+        self.name = 'Discrete_GNN'
         
         self.n_layers = n_layers
+        self.in_node_nf = in_node_nf
+        self.out_node_nf = out_node_nf
+        self.in_edge_nf = in_edge_nf
+        self.hidden_nf = hidden_nf
+        self.activation = activation
+        self.dropout = dropout
+        self.norm = norm
+        
         self.encoder = nn.Sequential(
             nn.Linear(in_node_nf, hidden_nf),
             nn.Linear(hidden_nf, hidden_nf),

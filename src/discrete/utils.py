@@ -93,15 +93,16 @@ def process_simulation_data(simulation_list: List,
 
             x_bounded = apply_periodic_boundary(x) # Ensure [0, 1] x [0, 1] x [0, 2pi]
 
-            N = x[0].shape[0]
-
             edge_index, edge_attr = compute_graph(x_bounded, method=cluster_method, p=p, device=device)
 
-            simulation = StiffSimulation(N=N, v0=0.1, L_box=1.0, delta_t=0.1, rot_couple=0, sigma=0.025, rot_rate=1,)
+            data = Data(
+                x=x_bounded.T.to(device),
+                y=y.T.to(device),
+                edge_index=edge_index.to(device),
+                edge_attr=edge_attr.to(device)
+            )
 
-            derivatives = torch.tensor(simulation.particle_system(t, y.numpy().T.reshape(N*3)).reshape(N, 3).T, dtype=dtype)
-
-            data_pairs.append((x_bounded.T, derivatives.T, edge_index, edge_attr))
+            data_pairs.append(data)
     
     return data_pairs
 
@@ -192,15 +193,7 @@ class ParticleDataset(Dataset):
         return len(self.data_pairs)
     
     def get(self, idx):
-        x, y, edge_index, edge_attr = self.data_pairs[idx]
-        data = Data(
-            x=x,
-            edge_index=edge_index,
-            edge_attr=edge_attr,
-            y=y 
-        )
-        
-        return data
+        return self.data_pairs[idx]
 
 class RelativeL2Loss(nn.Module):
     def __init__(self, epsilon=1e-8, reduction='mean', weights=None):

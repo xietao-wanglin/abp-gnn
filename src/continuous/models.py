@@ -35,7 +35,7 @@ class GNN_Layer(MessagePassing):
     def forward(self, x, edge_index, edge_attr, batch=None):
         # x: [N, hidden_nf]
         # edge_index: [2, E]
-        # edge_attr:e [E, edge_nf]
+        # edge_attr: [E, edge_nf]
         
         return self.propagate(edge_index, x=x, edge_attr=edge_attr, batch=batch)
     
