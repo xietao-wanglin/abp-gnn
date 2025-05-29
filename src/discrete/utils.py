@@ -1,6 +1,6 @@
-import numpy as np
 import torch
 from torch import nn
+import torch
 from torch_geometric.data import Dataset, Data
 from torch_cluster import radius_graph, knn_graph
 
@@ -16,7 +16,7 @@ def apply_periodic_boundary(positions: torch.Tensor, dims: Optional[List] = None
     ----------
     positions: torch.Tensor
         Position Tensor.
-    dims: List, optional
+    dims: list, optional
         The dimensions of the periodic box, default is None.
 
     Returns
@@ -33,8 +33,9 @@ def apply_periodic_boundary(positions: torch.Tensor, dims: Optional[List] = None
     return pos
 
 def process_simulation_data(simulation_list: List, 
-                            times_list: List,
-                            angle: bool,
+                            subset: Optional[bool] = False,
+                            subset_samples: Optional[List] = None,
+                            n_samples: Optional[int] = 4,
                             cluster_method: Optional[str] = 'radius',
                             p: Optional[int] = 0.1, 
                             dtype: Optional[torch.dtype] = torch.float,
@@ -47,6 +48,10 @@ def process_simulation_data(simulation_list: List,
     ----------
     simulation_list: List
         List of simulation arrays, each of shape (timesteps, 3, N) where N can vary between simulations.
+    subset: bool, optional
+        If True, selects `n_samples` random timesteps instead of all.
+    subset_samples: List, optional
+        If provided, samples to choose from trajectories if `subset=True`, otherwise random, default is None.
     n_samples: int, optional
         Number of random samples to pick when `subset=True`.
     cluster_method: str, optional
@@ -65,35 +70,38 @@ def process_simulation_data(simulation_list: List,
         where each x and y represents one timestep pair from any simulation.
     """
     data_pairs = []
-    assert len(simulation_list) == len(times_list), 'Must have equal amounts of simulations and times'
     
-    for idx in range(len(simulation_list)):
-
-        sim = simulation_list[idx]
-        times = times_list[idx]
+    for sim in simulation_list:
 
         if not torch.is_tensor(sim):
-            sim = torch.tensor(sim, dtype=dtype, device=device)
-        if not torch.is_tensor(times):
-            times = torch.tensor(times, dtype=dtype, device=device)
+            sim = torch.tensor(sim, dtype=dtype)
 
-        x = sim[0] # Features
-        # Labels
-        if angle:
-            y = sim[1:]
-        else: 
-            y = sim[1:][:, :2, :]
-        t = times[1:] # Collocation times
+        num_timesteps = sim.shape[0]-1
+        
+        # Choose steps pairs
+        if subset:
+            if subset_samples is None:
+                timesteps = torch.randint(0, num_timesteps, size=(min(n_samples, num_timesteps),))
+            else:
+                timesteps = subset_samples
+        else:
+            timesteps = range(0, num_timesteps)
 
-        edge_index, edge_attr = compute_graph(x, method=cluster_method, p=p, device=device)
-        data = Data(
-            x=x.T.to(device),
-            y=y.permute(0, 2, 1).to(device),
-            t=t.to(device),
-            edge_index=edge_index.to(device),
-            edge_attr=edge_attr.to(device)
-        )
-        data_pairs.append(data)
+        for t in timesteps:
+            x = sim[t]
+            y = sim[t+1]
+
+            x_bounded = apply_periodic_boundary(x) # Ensure [0, 1] x [0, 1] x [0, 2pi]
+
+            N = x[0].shape[0]
+
+            edge_index, edge_attr = compute_graph(x_bounded, method=cluster_method, p=p, device=device)
+
+            simulation = StiffSimulation(N=N, v0=0.1, L_box=1.0, delta_t=0.1, rot_couple=0, sigma=0.025, rot_rate=1,)
+
+            derivatives = torch.tensor(simulation.particle_system(t, y.numpy().T.reshape(N*3)).reshape(N, 3).T, dtype=dtype)
+
+            data_pairs.append((x_bounded.T, derivatives.T, edge_index, edge_attr))
     
     return data_pairs
 
@@ -110,8 +118,8 @@ def compute_graph(x: torch.Tensor,
         Postions (x, y, theta) of shape (3, N).
     method: str
         Either 'radius' for radial graph or 'knn' for knn graph.
-    p: float or int
-        Parameter of `method`.
+    p: float or int, optional
+        Parameter of 'method'.
     device: str or torch.device, optional
         Either 'cpu', 'cuda' or torch.device instance, default is 'cpu'.
 
@@ -162,7 +170,7 @@ def compute_graph(x: torch.Tensor,
         edge_index = knn_graph(x, k=p)
     else:
         raise ValueError("Invalid method, must be either 'radius', 'knn', 'np_radius' or 'np_knn'.")
-    
+
     edge_attr = torch.zeros(edge_index.shape[1], 0).to(device) # Empty edges
  
     return edge_index, edge_attr
@@ -174,7 +182,7 @@ class ParticleDataset(Dataset):
     Parameters
     ----------
     data_pairs: List
-        List of (x, y, t, edge_index, edge_attr) samples.
+        List of (x, y, edge_index, edge_attr) samples.
     """
     def __init__(self, data_pairs, transform=None, pre_transform=None):
         super(ParticleDataset, self).__init__(None, transform, pre_transform)
@@ -184,7 +192,15 @@ class ParticleDataset(Dataset):
         return len(self.data_pairs)
     
     def get(self, idx):
-        return self.data_pairs[idx]
+        x, y, edge_index, edge_attr = self.data_pairs[idx]
+        data = Data(
+            x=x,
+            edge_index=edge_index,
+            edge_attr=edge_attr,
+            y=y 
+        )
+        
+        return data
 
 class RelativeL2Loss(nn.Module):
     def __init__(self, epsilon=1e-8, reduction='mean', weights=None):
@@ -199,8 +215,8 @@ class RelativeL2Loss(nn.Module):
             self.weights = torch.tensor(weights)
 
     def forward(self, y_pred, y_true):
-        numerator = (self.weights*y_pred - self.weights*y_true) ** 2
-        denominator = (self.weights*y_true) ** 2 + self.epsilon
+        numerator = torch.sum((self.weights*y_pred - self.weights*y_true) ** 2, dim=-1)
+        denominator = torch.sum((self.weights*y_true) ** 2, dim=-1) + self.epsilon
         rel_l2 = numerator / denominator
 
         if self.reduction == 'mean':
