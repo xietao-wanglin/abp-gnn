@@ -1,7 +1,25 @@
 from src.simulation import Simulation, InfiniteSimulation, StiffSimulation
-from create_data import generate_state
 
 import numpy as np
+
+def generate_state(N, delta):
+
+    while True:
+        initial_state = np.random.random(3 * N)
+        initial_state[2::3] *= 2 * np.pi
+
+        initial_state = initial_state.reshape(N, 3).T
+
+        x = initial_state[0]
+        y = initial_state[1]
+
+        dx = x[:, None] - x[None, :]
+        dy = y[:, None] - y[None, :]
+        dist = np.sqrt(dx**2 + dy**2)
+        np.fill_diagonal(dist, np.inf)
+
+        if np.min(dist) >= delta:
+            return initial_state
 
 if __name__ == '__main__':
 

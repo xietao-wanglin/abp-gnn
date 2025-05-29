@@ -34,6 +34,7 @@ def apply_periodic_boundary(positions: torch.Tensor, dims: Optional[List] = None
 
 def process_simulation_data(simulation_list: List, 
                             times_list: List,
+                            angle: bool,
                             cluster_method: Optional[str] = 'radius',
                             p: Optional[int] = 0.1, 
                             dtype: Optional[torch.dtype] = torch.float,
@@ -77,7 +78,11 @@ def process_simulation_data(simulation_list: List,
             times = torch.tensor(times, dtype=dtype, device=device)
 
         x = sim[0] # Features
-        y = sim[1:][:, :2, :] # Labels
+        # Labels
+        if angle:
+            y = sim[1:]
+        else: 
+            y = sim[1:][:, :2, :]
         t = times[1:] # Collocation times
 
         edge_index, edge_attr = compute_graph(x, method=cluster_method, p=p, device=device)

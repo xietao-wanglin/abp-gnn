@@ -26,7 +26,6 @@ wandb.login()
 def train(model: nn.Module, 
           cluster_method: str,
           cluster_parameter: float | int, 
-          data_loc: str,
           batch_size: Optional[int] = 32,
           n_epochs: Optional[int] = 100, 
           lr: Optional[float] = 5e-4, 
@@ -78,12 +77,11 @@ def train(model: nn.Module,
     checkpoint_dir = os.path.join(script_dir, checkpoint_dir)
 
     os.makedirs(checkpoint_dir, exist_ok=True)
-    data_path = os.path.join(os.getcwd(), 'data')
 
-    train_glob = sorted(glob(f'{data_path}/{data_loc}/simulation_train_*'))
-    test_glob = sorted(glob(f'{data_path}/{data_loc}/simulation_test_*'))
-    times_train_glob = sorted(glob(f'{data_path}/{data_loc}/times_train_*'))
-    times_test_glob = sorted(glob(f'{data_path}/{data_loc}/times_test_*'))
+    train_glob = sorted(glob(f'{script_dir}/data/simulation_train_*'))
+    test_glob = sorted(glob(f'{script_dir}/data/simulation_test_*'))
+    times_train_glob = sorted(glob(f'{script_dir}/data/times_train_*'))
+    times_test_glob = sorted(glob(f'{script_dir}/data/times_test_*'))
 
     train_simulations = [np.load(sim) for sim in train_glob]
     test_simulations = [np.load(sim) for sim in test_glob]
@@ -92,15 +90,15 @@ def train(model: nn.Module,
     test_times = [np.load(times) for times in times_test_glob]
 
     data_pairs_train = process_simulation_data(train_simulations,
-                                               train_times,
-                                               angle=False, 
+                                               train_times, 
+                                               angle=True,
                                                cluster_method=cluster_method,
                                                p=cluster_parameter,
                                                dtype=dtype, 
                                                device=device)
     data_pairs_test = process_simulation_data(test_simulations,
                                               test_times, 
-                                              angle=False,
+                                              angle=True,
                                               cluster_method=cluster_method,
                                               p=cluster_parameter,
                                               dtype=dtype, 
@@ -148,12 +146,12 @@ def train(model: nn.Module,
         'norm': getattr(model,'norm', None),
         'cluster_method': cluster_method,
         'cluster_parameter': cluster_parameter,
-        'data_loc': data_loc,
         'train_samples': len(train_glob),
         'test_samples': len(test_glob),
     }
     wandb.init(
         project='ABP_GNN', 
+        name='vicsek',
         config=train_details
     )
 
@@ -290,7 +288,7 @@ if __name__ == '__main__':
     model = LatentGNN(
         n_layers=4,
         in_node_nf=3,
-        out_node_nf=2,
+        out_node_nf=3,
         latent_nf=64,
         in_edge_nf=0,
         hidden_nf=16,
@@ -303,10 +301,9 @@ if __name__ == '__main__':
         model=model,
         cluster_method='radius',
         cluster_parameter=0.1,
-        data_loc='stable',
         batch_size=1,
         checkpoint_every=20,
-        n_epochs=2,
+        n_epochs=100,
         lr=1e-5,
         weight_decay=1e-8,
         device=device,
