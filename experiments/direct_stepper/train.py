@@ -240,7 +240,7 @@ def train(model: nn.Module,
             checkpoint_path = os.path.join(checkpoint_dir, f'best_model.pt')
             history['best_val_loss'] = avg_val_loss
             torch.save({
-                'epoch': epoch,
+                'epoch': epoch + 1,
                 'model_state_dict': model.state_dict(),
                 'optimizer_state_dict': optimizer.state_dict(),
                 'scheduler_state_dict': scheduler.state_dict() if scheduler else None,
@@ -252,7 +252,7 @@ def train(model: nn.Module,
         if (epoch + 1) % checkpoint_every == 0:
             checkpoint_path = os.path.join(checkpoint_dir, f'model_epoch_{epoch+1}.pt')
             torch.save({
-                'epoch': epoch,
+                'epoch': epoch + 1,
                 'model_state_dict': model.state_dict(),
                 'optimizer_state_dict': optimizer.state_dict(),
                 'scheduler_state_dict': scheduler.state_dict() if scheduler else None,
@@ -297,8 +297,8 @@ if __name__ == '__main__':
         cluster_method='radius',
         cluster_parameter=0.1,
         batch_size=1,
-        checkpoint_every=20,
-        n_epochs=200,
+        checkpoint_every=100,
+        n_epochs=5000,
         lr=1e-5,
         weight_decay=1e-8,
         device=device,

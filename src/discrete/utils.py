@@ -97,7 +97,7 @@ def process_simulation_data(simulation_list: List,
 
             data = Data(
                 x=x_bounded.T.to(device),
-                y=y.T.to(device),
+                y=(y-x_bounded).T.to(device),
                 edge_index=edge_index.to(device),
                 edge_attr=edge_attr.to(device)
             )
