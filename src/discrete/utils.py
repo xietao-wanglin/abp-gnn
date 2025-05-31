@@ -2,7 +2,7 @@ import torch
 from torch import nn
 import torch
 from torch_geometric.data import Dataset, Data
-from torch_cluster import radius_graph, knn_graph
+#from torch_cluster import radius_graph, knn_graph
 
 from typing import Optional, List, Tuple
 
@@ -166,9 +166,11 @@ def compute_graph(x: torch.Tensor,
         col_indices = indices.flatten()
         edge_index = torch.stack([row_indices, col_indices])
     elif method == 'np_radius':
-        edge_index = radius_graph(x, r=p)
+        #edge_index = radius_graph(x, r=p)
+        pass
     elif method == 'np_knn':
-        edge_index = knn_graph(x, k=p)
+        #edge_index = knn_graph(x, k=p)
+        pass
     else:
         raise ValueError("Invalid method, must be either 'radius', 'knn', 'np_radius' or 'np_knn'.")
 
