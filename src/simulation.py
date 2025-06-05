@@ -234,7 +234,7 @@ class StiffSimulation(Simulation):
         inv_r = 1.0 / distances[mask]
         inv_r6 = (self.sigma * inv_r) ** 6
         inv_r12 = inv_r6 ** 2
-        F_mag = 4 * self.epsilon * (12 * inv_r12 + 6 * inv_r6) * inv_r
+        F_mag = 4 * self.epsilon * (12 * inv_r12 - 6 * inv_r6) * inv_r
 
         Fx = np.zeros_like(distances)
         Fy = np.zeros_like(distances)
