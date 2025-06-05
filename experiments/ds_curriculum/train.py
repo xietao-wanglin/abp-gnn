@@ -93,7 +93,7 @@ def train(model: nn.Module,
                                                subset_samples=subset_samples, 
                                                cluster_method=cluster_method,
                                                p=cluster_parameter,
-                                               use_distance=False,
+                                               use_distance=True,
                                                dtype=dtype, 
                                                device=device)
     data_pairs_test = process_simulation_data(test_simulations,
@@ -101,7 +101,7 @@ def train(model: nn.Module,
                                               subset_samples=subset_samples, 
                                               cluster_method=cluster_method,
                                               p=cluster_parameter,
-                                              use_distance=False,
+                                              use_distance=True,
                                               dtype=dtype, 
                                               device=device)
     
@@ -152,7 +152,7 @@ def train(model: nn.Module,
     }
     wandb.init(
         project='ABP_GNN',
-        name='direct_stepper',
+        name='ds_curriculum',
         config=train_details
     )
 
@@ -287,7 +287,7 @@ if __name__ == '__main__':
         n_layers=4,
         in_node_nf=3,
         out_node_nf=3,
-        in_edge_nf=0,
+        in_edge_nf=1,
         hidden_nf=64,
         device=device,
         norm=False,
@@ -299,8 +299,8 @@ if __name__ == '__main__':
         cluster_method='radius',
         cluster_parameter=0.1,
         batch_size=1,
-        checkpoint_every=100,
-        n_epochs=5000,
+        checkpoint_every=20,
+        n_epochs=200,
         lr=1e-5,
         weight_decay=1e-8,
         device=device,

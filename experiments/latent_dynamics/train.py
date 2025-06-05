@@ -1,4 +1,4 @@
-from src.continuous.models import GNN, LatentGNN
+from src.continuous.models import LatentGNN
 from src.continuous.utils import process_simulation_data, ParticleDataset, RelativeL2Loss
 
 import torch

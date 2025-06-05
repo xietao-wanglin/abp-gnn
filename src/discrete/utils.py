@@ -38,6 +38,7 @@ def process_simulation_data(simulation_list: List,
                             n_samples: Optional[int] = 4,
                             cluster_method: Optional[str] = 'radius',
                             p: Optional[int] = 0.1, 
+                            use_distance: Optional[bool] = False,
                             dtype: Optional[torch.dtype] = torch.float,
                             device: Optional[str | torch.device] = 'cpu') -> List:
     """
@@ -93,7 +94,7 @@ def process_simulation_data(simulation_list: List,
 
             x_bounded = apply_periodic_boundary(x) # Ensure [0, 1] x [0, 1] x [0, 2pi]
 
-            edge_index, edge_attr = compute_graph(x_bounded, method=cluster_method, p=p, device=device)
+            edge_index, edge_attr = compute_graph(x_bounded, method=cluster_method, p=p, use_distance=use_distance, device=device)
 
             data = Data(
                 x=x_bounded.T.to(device),
@@ -108,7 +109,8 @@ def process_simulation_data(simulation_list: List,
 
 def compute_graph(x: torch.Tensor, 
                     method: str,
-                    p: float | int, 
+                    p: float | int,
+                    use_distance: bool,
                     device: Optional[str | torch.device] = 'cpu') -> Tuple[torch.Tensor, torch.Tensor]:
     """
     Compute graph for a given set of node features.
@@ -173,8 +175,15 @@ def compute_graph(x: torch.Tensor,
         pass
     else:
         raise ValueError("Invalid method, must be either 'radius', 'knn', 'np_radius' or 'np_knn'.")
-
-    edge_attr = torch.zeros(edge_index.shape[1], 0).to(device) # Empty edges
+    
+    if use_distance:
+        row, col = edge_index
+        rel_pos_raw = xy[row] - xy[col]
+        rel_pos = rel_pos_raw - torch.round(rel_pos_raw)
+        rel_dist = torch.sum(rel_pos**2, dim=-1, keepdim=True)
+        edge_attr = rel_dist
+    else: 
+        edge_attr = torch.zeros(edge_index.shape[1], 0).to(device) # Empty edges
  
     return edge_index, edge_attr
     
