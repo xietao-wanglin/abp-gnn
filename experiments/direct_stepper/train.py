@@ -1,5 +1,5 @@
-from src.discrete.models import GNN
-from src.discrete.utils import process_simulation_data, ParticleDataset
+from src.models import GNN
+from src.utils import discrete_simulation, ParticleDataset
 
 import torch
 import torch.nn as nn
@@ -88,7 +88,7 @@ def train(model: nn.Module,
     train_simulations = [np.load(sim) for sim in train_glob]
     test_simulations = [np.load(sim) for sim in test_glob]
 
-    data_pairs_train = process_simulation_data(train_simulations,
+    data_pairs_train = discrete_simulation(train_simulations,
                                                subset=subset,
                                                subset_samples=subset_samples, 
                                                cluster_method=cluster_method,
@@ -96,7 +96,7 @@ def train(model: nn.Module,
                                                use_distance=False,
                                                dtype=dtype, 
                                                device=device)
-    data_pairs_test = process_simulation_data(test_simulations,
+    data_pairs_test = discrete_simulation(test_simulations,
                                               subset=subset,
                                               subset_samples=subset_samples, 
                                               cluster_method=cluster_method,

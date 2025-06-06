@@ -24,7 +24,7 @@ def generate_state(N, delta):
 
 if __name__ == '__main__':
 
-    N = 120
+    N = 40
     N_passive = 0
     rot_rate = np.ones(N)
     rot_rate[:N_passive] = np.zeros(N_passive)
@@ -47,10 +47,10 @@ if __name__ == '__main__':
                            delta_t=0.1, 
                            rot_couple=rot_couple, 
                            rot_rate=rot_rate, 
-                           sigma=0.025, couple_radius=0, timesteps=200, seed=0, periodic=True, solver_times=False,
+                           sigma=0.025, epsilon=0.1, couple_radius=0, timesteps=200, seed=0, periodic=False, solver_times=True,
                              initial_state=initial_state)
     start = time.time()
-    sim.solve_dynamics(method='Radau', max_time=20)
+    sim.solve_dynamics(method='RK45', max_time=20)
     end = time.time()
     print(end-start)
     times, loc = sim.get_solution_abs()

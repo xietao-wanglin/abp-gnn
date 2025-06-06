@@ -1,4 +1,4 @@
-from src.simulation import Simulation, InfiniteSimulation, StiffSimulation
+from src.simulation import RepulsiveSimulation
 
 import numpy as np
 from tqdm import tqdm
@@ -33,7 +33,7 @@ if __name__ == '__main__':
         N = np.random.randint(15, 30)
         rot_rate = 1
         initial_state = generate_state(N=N, delta=0.1)
-        sim = StiffSimulation(N=N, v0=0.1, L_box=1.0, delta_t=0.1, rot_couple=0, sigma=0.025, rot_rate=rot_rate, timesteps=20, seed=i, 
+        sim = RepulsiveSimulation(N=N, v0=0.1, L_box=1.0, delta_t=0.1, rot_couple=0, sigma=0.025, rot_rate=rot_rate, timesteps=20, seed=i, 
                               initial_state=initial_state, periodic=False, solver_times=True)
         sim.solve_dynamics(method='Radau', max_time=0.1)
         times, loc = sim.get_solution_abs()
@@ -45,7 +45,7 @@ if __name__ == '__main__':
         N = np.random.randint(15, 30)
         rot_rate = 1
         initial_state = generate_state(N=N, delta=0.1)
-        sim = StiffSimulation(N=N, v0=0.1, L_box=1.0, delta_t=0.1, rot_couple=0, sigma=0.025, rot_rate=rot_rate, timesteps=100, seed=98743*i+4500,
+        sim = RepulsiveSimulation(N=N, v0=0.1, L_box=1.0, delta_t=0.1, rot_couple=0, sigma=0.025, rot_rate=rot_rate, timesteps=100, seed=98743*i+4500,
                               initial_state=initial_state, periodic=False, solver_times=True)
         sim.solve_dynamics(method='Radau', max_time=0.1)
         times, loc = sim.get_solution_abs()

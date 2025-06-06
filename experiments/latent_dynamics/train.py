@@ -1,5 +1,5 @@
-from src.continuous.models import LatentGNN
-from src.continuous.utils import process_simulation_data, ParticleDataset, RelativeL2Loss
+from src.models import LatentGNN
+from src.utils import continuous_simulation, ParticleDataset
 
 import torch
 import torch.nn as nn
@@ -91,14 +91,14 @@ def train(model: nn.Module,
     train_times = [np.load(times) for times in times_train_glob]
     test_times = [np.load(times) for times in times_test_glob]
 
-    data_pairs_train = process_simulation_data(train_simulations,
+    data_pairs_train = continuous_simulation(train_simulations,
                                                train_times,
                                                angle=False, 
                                                cluster_method=cluster_method,
                                                p=cluster_parameter,
                                                dtype=dtype, 
                                                device=device)
-    data_pairs_test = process_simulation_data(test_simulations,
+    data_pairs_test = continuous_simulation(test_simulations,
                                               test_times, 
                                               angle=False,
                                               cluster_method=cluster_method,
