@@ -4,7 +4,7 @@ import matplotlib.pyplot as plt
 from matplotlib.animation import FuncAnimation
 from typing import Optional
 from tqdm import tqdm
-from scipy.optimize import fsolve, root
+from scipy.optimize import root
 
 
 class Simulation:

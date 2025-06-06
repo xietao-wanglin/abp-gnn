@@ -4,7 +4,6 @@ from src.utils import continuous_simulation, ParticleDataset
 import torch
 import torch.nn as nn
 from torch.optim import AdamW
-from torch.optim.lr_scheduler import CosineAnnealingWarmRestarts, ReduceLROnPlateau
 from torch_geometric.loader import DataLoader
 import wandb
 
@@ -14,7 +13,7 @@ from tqdm import tqdm
 import os
 import json
 from glob import glob
-from typing import Optional, List, Dict
+from typing import Optional, Dict
 
 device = (
     torch.accelerator.current_accelerator().type
@@ -165,7 +164,7 @@ def train(
     }
     wandb.init(project="ABP_GNN", config=train_details)
 
-    details_path = os.path.join(checkpoint_dir, f"details.json")
+    details_path = os.path.join(checkpoint_dir, "details.json")
     with open(details_path, "w") as f:
         json.dump(train_details, f, indent=4)
 
@@ -254,7 +253,7 @@ def train(
         )
 
         if avg_val_loss < history["best_val_loss"]:
-            checkpoint_path = os.path.join(checkpoint_dir, f"best_model.pt")
+            checkpoint_path = os.path.join(checkpoint_dir, "best_model.pt")
             history["best_val_loss"] = avg_val_loss
             torch.save(
                 {

@@ -1,4 +1,4 @@
-from src.simulation import Simulation, InfiniteSimulation, StiffSimulation
+from src.simulation import StiffSimulation
 
 import numpy as np
 import time
