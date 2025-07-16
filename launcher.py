@@ -1,4 +1,4 @@
-from src.simulation import StiffSimulation
+from src.simulation import LennardJonesSimulation
 
 import numpy as np
 import time
@@ -24,47 +24,43 @@ def generate_state(N, delta):
 
 
 if __name__ == "__main__":
-    N = 40
+    N = 120
     N_passive = 0
     rot_rate = np.ones(N)
     rot_rate[:N_passive] = np.zeros(N_passive)
     v0 = np.ones(N) * 0.1
     v0[:N_passive] = np.zeros(N_passive)
-    rot_couple = np.ones(N) * 0
+    rot_couple = np.ones(N) * 0.1
     rot_couple[:N_passive] = np.zeros(N_passive)
     np.random.seed(0)
     initial_state = np.random.random(3 * N)
     initial_state[2::3] = initial_state[2::3] * 2 * np.pi
-    initial_state[0::3] = initial_state[0::3] * 1
-    initial_state[1::3] = initial_state[1::3] * 1
+    initial_state[0::3] = initial_state[0::3] * 10
+    initial_state[1::3] = initial_state[1::3] * 10
     initial_state[2 : N_passive * 3 : 3] = initial_state[2 : N_passive * 3 : 3] * 0
     initial_state = initial_state.reshape(N, 3).T
     # sim_loc = './data/old/simulation_test_20.npy'
     # positions_true = np.load(sim_loc)
     # initial_state = positions_true[0]
     # initial_state = generate_state(N=N, delta=0.08)
-    sim = StiffSimulation(
+    sim = LennardJonesSimulation(
         N=N,
-        v0=v0,
+        v0=0.1,
         L_box=1.0,
         delta_t=0.1,
-        rot_couple=rot_couple,
-        rot_rate=rot_rate,
+        rot_couple=0,
         sigma=0.025,
-        epsilon=0.1,
-        couple_radius=0,
-        timesteps=200,
-        seed=0,
-        periodic=False,
-        solver_times=True,
+        rot_rate=rot_rate,
+        timesteps=20,
         initial_state=initial_state,
+        periodic=True,
     )
     start = time.time()
-    sim.solve_dynamics(method="RK45", max_time=20)
+    sim.solve_dynamics(method="Radau", max_time=20)
     end = time.time()
     print(end - start)
     times, loc = sim.get_solution_abs()
-    sim.create_animation(filename=None, timesteps=200, axis_offset=0)
+    sim.create_animation(filename=None, timesteps=20, axis_offset=0)
     print(np.diff(times).mean(), np.median(np.diff(times)), len(times))
     # print(np.diff(times[6000:]).mean(), np.median(np.diff(times[6000:])), len(times))
     # np.save(f'./data/test_2.npy', loc)

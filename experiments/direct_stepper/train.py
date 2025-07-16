@@ -88,8 +88,8 @@ def train(
 
     os.makedirs(checkpoint_dir, exist_ok=True)
 
-    train_glob = sorted(glob(f"{script_dir}/data/simulation_train_*"))
-    test_glob = sorted(glob(f"{script_dir}/data/simulation_test_*"))
+    train_glob = sorted(glob(f"{script_dir}/data/simulation_train_*")[:100])
+    test_glob = sorted(glob(f"{script_dir}/data/simulation_test_*")[:20])
 
     train_simulations = [np.load(sim) for sim in train_glob]
     test_simulations = [np.load(sim) for sim in test_glob]
@@ -323,13 +323,13 @@ if __name__ == "__main__":
         model=model,
         cluster_method="radius",
         cluster_parameter=0.1,
-        batch_size=1,
-        checkpoint_every=100,
-        n_epochs=5000,
-        lr=1e-5,
-        weight_decay=1e-8,
+        batch_size=400,
+        checkpoint_every=1000,
+        n_epochs=20000,
+        lr=1e-3,
+        weight_decay=1,
         device=device,
         subset=True,
-        subset_samples=[3, 6, 9, 12, 15, 18],
+        subset_samples=[3, 9, 15, 18],
         base_model_path=None,
     )

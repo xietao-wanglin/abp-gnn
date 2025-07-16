@@ -1,4 +1,4 @@
-from src.simulation import RepulsiveSimulation
+from src.simulation import LennardJonesSimulation
 
 import numpy as np
 from tqdm import tqdm
@@ -29,7 +29,7 @@ if __name__ == "__main__":
         N = np.random.randint(15, 30)
         rot_rate = 1
         initial_state = generate_state(N=N, seed=i)
-        sim = RepulsiveSimulation(
+        sim = LennardJonesSimulation(
             N=N,
             v0=0.1,
             L_box=1.0,
@@ -44,36 +44,36 @@ if __name__ == "__main__":
         )
         sim.solve_dynamics(method="Radau")
         times, loc = sim.get_solution_abs()
-        np.save(f"./experiments/latent_dynamics/data/simulation_train_{i}.npy", loc)
+        np.save(f"./experiments/full_lj/data/simulation_train_{i}.npy", loc)
 
     for i in tqdm(range(test_init, test_sims + test_init), desc="Test Set"):
         np.random.seed(98743 * i + 4500)
         N = np.random.randint(15, 30)
         rot_rate = 1
         initial_state = generate_state(N=N, seed=i)
-        sim = RepulsiveSimulation(
+        sim = LennardJonesSimulation(
             N=N,
             v0=0.1,
             L_box=1.0,
-            delta_t=1e-5,
+            delta_t=0.1,
             rot_couple=0,
             sigma=0.025,
             rot_rate=rot_rate,
-            timesteps=10000,
+            timesteps=20,
             seed=98743 * i + 4500,
             initial_state=initial_state,
             periodic=True,
         )
         sim.solve_dynamics(method="Radau")
         times, loc = sim.get_solution_abs()
-        np.save(f"./experiments/latent_dynamics/data/simulation_test_{i}.npy", loc)
+        np.save(f"./experiments/full_lj/data/simulation_test_{i}.npy", loc)
 
     for i in tqdm(range(4), desc="Long Test Set"):
         np.random.seed(983 * i + 2000)
         N = np.random.randint(15, 30)
         rot_rate = 1
         initial_state = generate_state(N=N, seed=i)
-        sim = RepulsiveSimulation(
+        sim = LennardJonesSimulation(
             N=N,
             v0=0.1,
             L_box=1.0,
@@ -88,4 +88,4 @@ if __name__ == "__main__":
         )
         sim.solve_dynamics(method="Radau")
         times, loc = sim.get_solution_abs()
-        np.save(f"./experiments/latent_dynamics/data/test_{i}.npy", loc)
+        np.save(f"./experiments/full_lj/data/test_{i}.npy", loc)

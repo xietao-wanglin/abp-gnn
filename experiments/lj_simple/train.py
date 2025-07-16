@@ -1,5 +1,5 @@
-from src.models import LatentGNN
-from src.utils import continuous_simulation, ParticleDataset
+from src.models import GNN
+from src.utils import discrete_simulation, ParticleDataset
 
 import torch
 import torch.nn as nn
@@ -13,7 +13,7 @@ from tqdm import tqdm
 import os
 import json
 from glob import glob
-from typing import Optional, Dict
+from typing import Optional, List, Dict
 
 device = (
     torch.accelerator.current_accelerator().type
@@ -39,6 +39,8 @@ def train(
     checkpoint_dir: Optional[str] = "checkpoints",
     checkpoint_every: Optional[int] = 2,
     hist_filename: Optional[str] = "training_history",
+    subset: Optional[bool] = False,
+    subset_samples: Optional[List] = None,
     base_model_path: Optional[str] = None,
 ) -> Dict:
     """
@@ -48,14 +50,12 @@ def train(
     ----------
     model: nn.Module
         Model instance.
-    train_simulation_list: List
-        List of train simulation arrays.
-    test_simulation_list: List
-        List of test simulation arrays.
     cluster_method: str
         Graph creation method, either 'radius' or 'knn'.
     cluster_parameter: float or int
         Parameter used in `cluster_method`.
+    batch_size: int, optional
+        Mini batch size.
     n_epochs: int, optional
         Number of epochs to train, default is 100.
     lr: float, optional
@@ -70,6 +70,10 @@ def train(
         Save checkpoint every N epochs, default is 10.
     hist_filename: str, optional
         Name of training history JSON file, defualt is 'training_history'.
+    subset: bool, optional
+        If True, use a subset of the trajectories instead of full simulations, default is False.
+    subset_samples: List, optional
+        If provided, samples to choose from trajectories if `subset=True`, otherwise random, default is None.
     base_model_path: str, optional
         If provided, use path model to load weights, default is None.
 
@@ -85,33 +89,28 @@ def train(
     os.makedirs(checkpoint_dir, exist_ok=True)
 
     train_glob = sorted(glob(f"{script_dir}/data/simulation_train_*"))
-    test_glob = sorted(glob(f"{script_dir}/data//simulation_test_*"))
-    times_train_glob = sorted(glob(f"{script_dir}/data/times_train_*"))
-    times_test_glob = sorted(glob(f"{script_dir}/data/times_test_*"))
+    test_glob = sorted(glob(f"{script_dir}/data/simulation_test_*"))
 
     train_simulations = [np.load(sim) for sim in train_glob]
     test_simulations = [np.load(sim) for sim in test_glob]
 
-    train_times = [np.load(times) for times in times_train_glob]
-    test_times = [np.load(times) for times in times_test_glob]
-
-    data_pairs_train = continuous_simulation(
+    data_pairs_train = discrete_simulation(
         train_simulations,
-        train_times,
-        angle=False,
+        subset=subset,
+        subset_samples=subset_samples,
         cluster_method=cluster_method,
         p=cluster_parameter,
-        use_distance=False,
+        use_distance=True,
         dtype=dtype,
         device=device,
     )
-    data_pairs_test = continuous_simulation(
+    data_pairs_test = discrete_simulation(
         test_simulations,
-        test_times,
-        angle=False,
+        subset=subset,
+        subset_samples=subset_samples,
         cluster_method=cluster_method,
         p=cluster_parameter,
-        use_distance=False,
+        use_distance=True,
         dtype=dtype,
         device=device,
     )
@@ -161,7 +160,7 @@ def train(
         "train_samples": len(train_glob),
         "test_samples": len(test_glob),
     }
-    wandb.init(project="ABP_GNN", name="latent_dynamics", config=train_details)
+    wandb.init(project="ABP_GNN", name="lj_simple", config=train_details)
 
     details_path = os.path.join(checkpoint_dir, "details.json")
     with open(details_path, "w") as f:
@@ -194,10 +193,8 @@ def train(
         pbar = tqdm(train_loader, desc=f"Epoch {epoch + 1}/{n_epochs + initial_epoch}")
         for batch_idx, batch in enumerate(pbar):
             batch = batch.to(device)
-
             y = batch.y
-            t = batch.t
-            pred = model(batch, t)
+            pred = model(batch)
             loss = criterion(pred, y).mean()
             metric_train = metric(pred, y).mean()
             optimizer.zero_grad()
@@ -221,8 +218,7 @@ def train(
             for batch in val_loader:
                 batch = batch.to(device)
                 y = batch.y
-                t = batch.t
-                pred = model(batch, t)
+                pred = model(batch)
                 loss = criterion(pred, y).mean()
                 metric_val = metric(pred, y).mean()
                 val_losses.append(loss.item())
@@ -256,7 +252,7 @@ def train(
             history["best_val_loss"] = avg_val_loss
             torch.save(
                 {
-                    "epoch": epoch,
+                    "epoch": epoch + 1,
                     "model_state_dict": model.state_dict(),
                     "optimizer_state_dict": optimizer.state_dict(),
                     "scheduler_state_dict": scheduler.state_dict()
@@ -275,7 +271,7 @@ def train(
             )
             torch.save(
                 {
-                    "epoch": epoch,
+                    "epoch": epoch + 1,
                     "model_state_dict": model.state_dict(),
                     "optimizer_state_dict": optimizer.state_dict(),
                     "scheduler_state_dict": scheduler.state_dict()
@@ -312,13 +308,12 @@ def train(
 
 
 if __name__ == "__main__":
-    model = LatentGNN(
+    model = GNN(
         n_layers=4,
         in_node_nf=3,
-        out_node_nf=2,
-        latent_nf=64,
-        in_edge_nf=0,
-        hidden_nf=16,
+        out_node_nf=3,
+        in_edge_nf=1,
+        hidden_nf=64,
         device=device,
         norm=False,
         activation=nn.SiLU(),
@@ -329,10 +324,12 @@ if __name__ == "__main__":
         cluster_method="radius",
         cluster_parameter=0.1,
         batch_size=1,
-        checkpoint_every=100,
-        n_epochs=4000,
+        checkpoint_every=200,
+        n_epochs=10000,
         lr=1e-5,
         weight_decay=1e-8,
         device=device,
+        subset=True,
+        subset_samples=[3, 6, 9, 12, 15, 18],
         base_model_path=None,
     )

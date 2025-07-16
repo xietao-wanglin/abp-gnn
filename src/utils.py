@@ -2,6 +2,7 @@ import torch
 from torch_geometric.data import Dataset, Data
 
 from typing import Optional, List, Tuple
+from src.simulation import LennardJonesSimulation
 
 
 def apply_periodic_boundary(
@@ -39,6 +40,8 @@ def discrete_simulation(
     cluster_method: Optional[str] = "radius",
     p: Optional[int] = 0.1,
     use_distance: Optional[bool] = False,
+    use_relative_encoding: Optional[bool] = False,
+    use_derivatives: Optional[bool] = False,
     dtype: Optional[torch.dtype] = torch.float,
     device: Optional[str | torch.device] = "cpu",
 ) -> List:
@@ -101,15 +104,41 @@ def discrete_simulation(
                 method=cluster_method,
                 p=p,
                 use_distance=use_distance,
+                use_relative_encoding=use_relative_encoding,
                 device=device,
             )
+            label = (y - x_bounded).T.to(device)
+            if use_derivatives:
+                N = x[0].shape[0]
+                simulation = LennardJonesSimulation(
+                    N=N,
+                    v0=0.1,
+                    L_box=1.0,
+                    delta_t=0.1,
+                    rot_couple=0,
+                    sigma=0.025,
+                    rot_rate=1,
+                    timesteps=200,
+                    periodic=True,
+                )
+                derivatives = torch.tensor(simulation.particle_system(t, y.numpy().T.reshape(N*3)).reshape(N, 3).T, dtype=dtype)
+                label = derivatives.T
 
-            data = Data(
-                x=x_bounded.T.to(device),
-                y=(y - x_bounded).T.to(device),
-                edge_index=edge_index.to(device),
-                edge_attr=edge_attr.to(device),
-            )
+            if use_relative_encoding:
+                data = Data(
+                    x=x_bounded[2].unsqueeze(0).T.to(device),
+                    y=label,
+                    edge_index=edge_index.to(device),
+                    edge_attr=edge_attr.to(device),
+                )
+
+            else:
+                data = Data(
+                    x=x_bounded.T.to(device),
+                    y=label,
+                    edge_index=edge_index.to(device),
+                    edge_attr=edge_attr.to(device),
+                )
 
             data_pairs.append(data)
 
@@ -122,6 +151,7 @@ def continuous_simulation(
     angle: bool,
     cluster_method: Optional[str] = "radius",
     p: Optional[int] = 0.1,
+    use_distance: Optional[bool] = False,
     dtype: Optional[torch.dtype] = torch.float,
     device: Optional[str | torch.device] = "cpu",
 ) -> List:
@@ -173,7 +203,7 @@ def continuous_simulation(
         t = times[1:]  # Collocation times
 
         edge_index, edge_attr = compute_graph(
-            x, method=cluster_method, p=p, device=device
+            x, method=cluster_method, p=p, device=device, use_distance=use_distance
         )
         data = Data(
             x=x.T.to(device),
@@ -192,6 +222,8 @@ def compute_graph(
     method: str,
     p: float | int,
     use_distance: bool,
+    use_relative_encoding: Optional[bool] = False,
+    box_length: Optional[float] = 1,
     device: Optional[str | torch.device] = "cpu",
 ) -> Tuple[torch.Tensor, torch.Tensor]:
     """
@@ -216,7 +248,7 @@ def compute_graph(
         Edge features, shape (E, 1).
     """
 
-    xy, theta = x[:-1], x[-1]
+    xy, _theta = x[:-1], x[-1]
     xy = xy.transpose(0, 1)
     if method == "radius":
         x_coords = xy[:, 0]
@@ -225,8 +257,8 @@ def compute_graph(
         dx = x_coords.unsqueeze(1) - x_coords.unsqueeze(0)
         dy = y_coords.unsqueeze(1) - y_coords.unsqueeze(0)
 
-        dx = dx - torch.round(dx)
-        dy = dy - torch.round(dy)
+        dx = dx - box_length*torch.round(dx/box_length)
+        dy = dy - box_length*torch.round(dy/box_length)
 
         distances = torch.sqrt(dx.pow(2) + dy.pow(2))
         edges = torch.where(distances < p)
@@ -260,6 +292,12 @@ def compute_graph(
         rel_pos = rel_pos_raw - torch.round(rel_pos_raw)
         rel_dist = torch.sum(rel_pos**2, dim=-1, keepdim=True)
         edge_attr = rel_dist
+    elif use_relative_encoding:
+        row, col = edge_index
+        rel_pos_raw = xy[row] - xy[col]
+        rel_pos = rel_pos_raw - box_length*torch.round(rel_pos_raw/box_length)
+        rel_dist = torch.norm(rel_pos, dim=-1, keepdim=True)
+        edge_attr = torch.cat([rel_pos, rel_dist], dim=-1)
     else:
         edge_attr = torch.zeros(edge_index.shape[1], 0).to(device)  # Empty edges
 
