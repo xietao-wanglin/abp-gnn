@@ -8,6 +8,7 @@
 #SBATCH --gres=gpu:quadro_rtx_6000:1
 
 export TQDM_DISABLE=1
-module load GCCcore/13.3.0 Python/3.12.3
+module load GCCcore/13.2.0 Python/3.11.5
 
-srun python ./train.py
+cd $SLURM_SUBMIT_DIR/../../
+srun python -m experiments.vicsek.train

@@ -6,7 +6,7 @@ Implementation of a Graph Neural Network for Active Brownian Particles. The repo
 
 ## Using the project
 
-The project has been tested with Python 3.12.2 and Python 3.12.9 on Linux and PyTorch 2.6.0.
+The project has been tested with Python 3.11.5, 3.12.9 on Linux using PyTorch 2.6.1, 2.7.0.
 
 ### Install dependecies
 
