@@ -8,4 +8,5 @@
 export TQDM_DISABLE=1
 module load GCCcore/13.2.0 Python/3.11.5
 
-srun python ./train.py
+cd $SLURM_SUBMIT_DIR/../../
+srun python -m experiments.latent_dynamics.train

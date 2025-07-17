@@ -9,4 +9,4 @@ export TQDM_DISABLE=1
 module load GCCcore/13.2.0 Python/3.11.5
 
 cd $SLURM_SUBMIT_DIR/../../
-srun python -m experiments.direct_stepper.train
+srun python -m experiments.ds_curriculum.train

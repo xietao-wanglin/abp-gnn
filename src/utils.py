@@ -47,8 +47,8 @@ def discrete_simulation(
 ) -> List:
     """
     Process multiple simulations for training.
-    Returns list of (input, target) pairs instead of concatenated tensors.
-
+    Returns list of (input, target) pairs.
+    
     Parameters
     ----------
     simulation_list: List
