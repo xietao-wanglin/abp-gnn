@@ -124,6 +124,142 @@ class GNN(nn.Module):
         x = self.decoder(x)
 
         return x
+    
+class GNS_Layer(MessagePassing):
+    def __init__(
+        self, hidden_nf, edge_nf, activation=nn.SiLU(), dropout=0.0, norm=True
+    ):
+        super(GNS_Layer, self).__init__(aggr="sum")
+        self.hidden_nf = hidden_nf
+        self.edge_nf = edge_nf
+        self.activation = activation
+        self.dropout = nn.Dropout(dropout) if dropout > 0.0 else nn.Identity()
+        self.norm = LayerNorm(hidden_nf) if norm else None
+
+        self.edge_mlp = nn.Sequential(
+            nn.Linear(2 * hidden_nf + hidden_nf, hidden_nf),
+            self.dropout,
+            activation,
+            nn.Linear(hidden_nf, hidden_nf),
+            activation,
+        )
+        self.node_mlp = nn.Sequential(
+            nn.Linear(hidden_nf + hidden_nf, hidden_nf),
+            self.dropout,
+            activation,
+            nn.Linear(hidden_nf, hidden_nf),
+            activation,
+        )
+
+    def forward(self, x, edge_index, edge_attr, batch=None):
+        # x: [N, hidden_nf]
+        # edge_index: [2, E]
+        # edge_attr: [E, hidden_nf]
+        row, col = edge_index
+        x_i = x[row]
+        x_j = x[col]
+        edge_features = torch.cat(
+            [x_i, x_j, edge_attr], dim=-1
+        )  # Shape: [E, hidden_nf + hidden_nf + hidden_nf]
+
+        edge_attr_new = self.edge_mlp(edge_features)
+
+        x_new = self.propagate(edge_index, x=x, edge_attr=edge_attr, batch=batch)
+
+        return x_new, edge_attr_new
+
+    def message(self, x_i, x_j, edge_attr):
+        return edge_attr
+
+    def update(self, aggr_out, x):
+        if self.norm is not None:
+            x_norm = self.norm(x)
+        else:
+            x_norm = x
+
+        node_features = torch.cat(
+            [x_norm, aggr_out], dim=-1
+        )  # Shape: [N, hidden_nf + hidden_nf]
+        x_new = self.node_mlp(node_features)
+
+        return x_new
+
+class GNS(nn.Module):
+    def __init__(
+        self,
+        n_layers,
+        in_node_nf,
+        out_node_nf,
+        in_edge_nf,
+        hidden_nf,
+        activation=nn.SiLU(),
+        device="cpu",
+        dropout=0.0,
+        norm=True,
+    ):
+        super(GNS, self).__init__()
+
+        self.name = "GNS"
+
+        self.n_layers = n_layers
+        self.in_node_nf = in_node_nf
+        self.out_node_nf = out_node_nf
+        self.in_edge_nf = in_edge_nf
+        self.hidden_nf = hidden_nf
+        self.activation = activation
+        self.dropout = dropout
+        self.norm = norm
+
+        self.node_encoder = nn.Sequential(
+            nn.Linear(in_node_nf, hidden_nf),
+            activation,
+            nn.Linear(hidden_nf, hidden_nf),
+            activation,
+        )
+        
+        self.edge_encoder = nn.Sequential(
+            nn.Linear(in_edge_nf, hidden_nf),
+            activation,
+            nn.Linear(hidden_nf, hidden_nf),
+            activation,
+        )
+
+        self.layers = nn.ModuleList()
+
+        for _ in range(self.n_layers):
+            self.layers.append(
+                GNS_Layer(hidden_nf, hidden_nf, activation, dropout, norm)
+            )
+
+        self.decoder = nn.Sequential(
+            nn.Linear(hidden_nf, hidden_nf),
+            activation,
+            nn.Linear(hidden_nf, hidden_nf),
+            activation,
+            nn.Linear(hidden_nf, out_node_nf),
+        )
+
+        self.to(device)
+
+    def forward(self, data):
+        x, edge_index, edge_attr, batch = (
+            data.x,
+            data.edge_index,
+            data.edge_attr,
+            data.batch,
+        )
+
+        x = self.node_encoder(x)
+        edge_attr = self.edge_encoder(edge_attr)
+
+        for layer in self.layers:
+            x_new, edge_attr_new = layer(x, edge_index, edge_attr, batch)
+            x = x + x_new
+            edge_attr = edge_attr + edge_attr_new
+
+        x = self.decoder(x)
+
+        return x
 
 
 class GAT_Layer(nn.Module):

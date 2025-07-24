@@ -163,7 +163,7 @@ def train(
         "train_samples": len(train_glob),
         "test_samples": len(test_glob),
     }
-    wandb.init(project="ABP_GNN", name="vicsek_push", config=train_details)
+    wandb.init(project="ABP_GNN", name="soft_repulsion", config=train_details)
 
     details_path = os.path.join(checkpoint_dir, "details.json")
     with open(details_path, "w") as f:
@@ -357,7 +357,7 @@ if __name__ == "__main__":
         batch_size=1,
         checkpoint_every=100,
         n_epochs=200,
-        lr=1e-5,
+        lr=1e-4,
         weight_decay=1e-8,
         device=device,
         subset=True,

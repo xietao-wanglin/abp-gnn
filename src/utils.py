@@ -25,11 +25,9 @@ def apply_periodic_boundary(
     """
     if dims is None:
         dims = [1.0, 1.0, 2 * torch.pi]
-    pos = positions.clone()
-    pos[0] = pos[0] % dims[0]
-    pos[1] = pos[1] % dims[1]
-    pos[2] = pos[2] % dims[2]
-    return pos
+    dims_tensor = torch.tensor(dims, dtype=positions.dtype, device=positions.device)
+    dims_tensor = dims_tensor.view(3, 1)
+    return torch.remainder(positions, dims_tensor)
 
 
 def discrete_simulation(
@@ -130,6 +128,8 @@ def discrete_simulation(
                     y=label,
                     edge_index=edge_index.to(device),
                     edge_attr=edge_attr.to(device),
+                    trajectory=apply_periodic_boundary(sim[t+1:t+20]),
+                    full_x = x_bounded.T.to(device)
                 )
 
             else:
@@ -138,6 +138,7 @@ def discrete_simulation(
                     y=label,
                     edge_index=edge_index.to(device),
                     edge_attr=edge_attr.to(device),
+                    trajectory=apply_periodic_boundary(sim[t+1:t+20]),
                 )
 
             data_pairs.append(data)
@@ -311,7 +312,7 @@ class ParticleDataset(Dataset):
     Parameters
     ----------
     data_pairs: List
-        List of (x, y, edge_index, edge_attr) samples.
+        List of PyG Data objects.
     """
 
     def __init__(self, data_pairs, transform=None, pre_transform=None):
