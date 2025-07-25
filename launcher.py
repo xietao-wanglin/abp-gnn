@@ -1,4 +1,4 @@
-from src.simulation import RepulsiveSimulation
+from src.simulation import LennardJonesSimulation
 
 import numpy as np
 import time
@@ -43,7 +43,7 @@ if __name__ == "__main__":
     # positions_true = np.load(sim_loc)
     # initial_state = positions_true[0]
     initial_state = generate_state(N=N, delta=0.0)
-    sim = RepulsiveSimulation(
+    sim = LennardJonesSimulation(
         N=N,
         v0=0.1,
         L_box=1.0,
@@ -52,7 +52,7 @@ if __name__ == "__main__":
         sigma=0.025,
         epsilon=0.1,
         rot_rate=rot_rate,
-        timesteps=200,
+        timesteps=60,
         initial_state=initial_state,
         periodic=True,
         solver_times=False
