@@ -2,7 +2,6 @@ import torch
 from torch_geometric.data import Dataset, Data
 
 from typing import Optional, List, Tuple
-from src.simulation import LennardJonesSimulation
 
 
 def apply_periodic_boundary(
@@ -39,7 +38,7 @@ def discrete_simulation(
     p: Optional[int] = 0.1,
     use_distance: Optional[bool] = False,
     use_relative_encoding: Optional[bool] = False,
-    use_derivatives: Optional[bool] = False,
+    extended_data: Optional[bool] = False,
     dtype: Optional[torch.dtype] = torch.float,
     device: Optional[str | torch.device] = "cpu",
 ) -> List:
@@ -93,9 +92,9 @@ def discrete_simulation(
 
         for t in timesteps:
             x = sim[t]
-            y = sim[t + 1]
+            y = sim[t + 1][:3]
 
-            x_bounded = apply_periodic_boundary(x)  # Ensure [0, 1] x [0, 1] x [0, 2pi]
+            x_bounded = apply_periodic_boundary(x[:3])  # Ensure [0, 1] x [0, 1] x [0, 2pi]
 
             edge_index, edge_attr = compute_graph(
                 x_bounded,
@@ -105,41 +104,37 @@ def discrete_simulation(
                 use_relative_encoding=use_relative_encoding,
                 device=device,
             )
-            label = (y - x_bounded).T.to(device)
-            if use_derivatives:
-                N = x[0].shape[0]
-                simulation = LennardJonesSimulation(
-                    N=N,
-                    v0=0.1,
-                    L_box=1.0,
-                    delta_t=0.1,
-                    rot_couple=0,
-                    sigma=0.025,
-                    rot_rate=1,
-                    timesteps=200,
-                    periodic=True,
-                )
-                derivatives = torch.tensor(simulation.particle_system(t, y.numpy().T.reshape(N*3)).reshape(N, 3).T, dtype=dtype)
-                label = derivatives.T
+            label = (y - x_bounded).T.to(device).to(dtype=dtype)
 
             if use_relative_encoding:
                 data = Data(
-                    x=x_bounded[2].unsqueeze(0).T.to(device),
+                    x=x_bounded[2].unsqueeze(0).T.to(device).to(dtype=dtype),
                     y=label,
                     edge_index=edge_index.to(device),
-                    edge_attr=edge_attr.to(device),
-                    trajectory=apply_periodic_boundary(sim[t+1:t+20]),
-                    full_x = x_bounded.T.to(device)
+                    edge_attr=edge_attr.to(device).to(dtype=dtype),
+                    trajectory=apply_periodic_boundary(sim[t+1:t+20, :3]),
+                    full_x = x_bounded.T.to(device).to(dtype=dtype)
                 )
-
-            else:
+            
+            if extended_data:
+                x[2] = x[2] % (2 * torch.pi)
+                data = Data(
+                    x=x[2:].T.to(device).to(dtype=dtype),
+                    y=label,
+                    edge_index=edge_index.to(device),
+                    edge_attr=edge_attr.to(device).to(dtype=dtype),
+                    trajectory=apply_periodic_boundary(sim[t+1:t+20, :3]),
+                    full_x = x_bounded.T.to(device).to(dtype=dtype),
+                    particle_feats = x[3:].T.to(device).to(dtype=dtype)
+                )
+            if not extended_data and not use_relative_encoding:
                 data = Data(
                     x=x_bounded.T.to(device),
                     y=label,
                     edge_index=edge_index.to(device),
                     edge_attr=edge_attr.to(device),
-                    trajectory=apply_periodic_boundary(sim[t+1:t+20]),
-                )
+                    trajectory=apply_periodic_boundary(sim[t+1:t+20, :3]),
+                ).to(dtype=dtype)
 
             data_pairs.append(data)
 

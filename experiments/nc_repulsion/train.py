@@ -1,4 +1,4 @@
-from src.models import GNN
+from src.models import GNS
 from src.utils import discrete_simulation, ParticleDataset, apply_periodic_boundary, compute_graph
 
 import torch
@@ -22,7 +22,7 @@ device = (
     else "cpu"
 )
 print(f"Using {device} device")
-dtype = torch.float
+dtype = torch.double
 seed = 0
 torch.manual_seed(seed)
 wandb.login()
@@ -129,7 +129,7 @@ def train(
 
     val_loader = DataLoader(
         test_dataset,
-        batch_size=batch_size,
+        batch_size=1,
     )
 
     optimizer = AdamW(model.parameters(), lr=lr, weight_decay=weight_decay)
@@ -163,7 +163,7 @@ def train(
         "train_samples": len(train_glob),
         "test_samples": len(test_glob),
     }
-    wandb.init(project="ABP_GNN", name="vicsek_push", config=train_details)
+    wandb.init(project="ABP_GNN", name="nc_repulsion", config=train_details)
 
     details_path = os.path.join(checkpoint_dir, "details.json")
     with open(details_path, "w") as f:
@@ -218,10 +218,11 @@ def train(
         val_losses = []
         val_metrics = []
 
-        mse_1 = []
-        mse_5 = []
-        mse_10 = []
-        mse_20 = []
+        if (epoch + 1) % checkpoint_every == 0:
+            mse_1 = []
+            mse_5 = []
+            mse_10 = []
+            mse_20 = []
         with torch.no_grad():
             for batch in val_loader:
                 batch = batch.to(device)
@@ -229,20 +230,21 @@ def train(
                 pred = model(batch)
                 loss = criterion(pred, y).mean()
                 metric_val = metric(pred, y).mean()
-                gt_trajectory = batch.trajectory
-                rollout = torch.zeros_like(gt_trajectory)
-                rollout[0] = apply_periodic_boundary((pred + batch.full_x).T) # Rollout manually
-                for roll in range(18):
-                    x = rollout[roll]
-                    edge_index, edge_attr = compute_graph(x, method='radius', p=0.1, use_distance=False, use_relative_encoding=True, box_length=1)
-                    data = Data(x=x[2].unsqueeze(0).T, edge_index=edge_index, edge_attr=edge_attr)
-                    pred = model(data)
-                    rollout[roll+1] = apply_periodic_boundary((pred + rollout[roll].T).T)
-                mse_trajectory = (rollout - gt_trajectory).pow(2)
-                mse_1.append(mse_trajectory[0].mean().item())
-                mse_5.append(mse_trajectory[:5].mean().item())
-                mse_10.append(mse_trajectory[:10].mean().item())
-                mse_20.append(mse_trajectory[:20].mean().item())
+                if (epoch + 1) % checkpoint_every == 0:
+                    gt_trajectory = batch.trajectory
+                    rollout = torch.zeros_like(gt_trajectory)
+                    rollout[0] = apply_periodic_boundary((pred + batch.full_x).T) # Rollout manually
+                    for roll in range(18):
+                        x = rollout[roll]
+                        edge_index, edge_attr = compute_graph(x, method="radius", p=0.1, use_distance=False, use_relative_encoding=True, box_length=1)
+                        data = Data(x=x[2].unsqueeze(0).T, edge_index=edge_index, edge_attr=edge_attr)
+                        pred = model(data)
+                        rollout[roll+1] = apply_periodic_boundary((pred + rollout[roll].T).T)
+                    mse_trajectory = (rollout - gt_trajectory).pow(2)
+                    mse_1.append(mse_trajectory[0].mean().item())
+                    mse_5.append(mse_trajectory[:5].mean().item())
+                    mse_10.append(mse_trajectory[:10].mean().item())
+                    mse_20.append(mse_trajectory[:20].mean().item())
                 val_losses.append(loss.item())
                 val_metrics.append(metric_val.item())
 
@@ -252,10 +254,11 @@ def train(
         avg_train_metric = np.mean(train_metrics)
         avg_val_metric = np.mean(val_metrics)
 
-        avg_mse_1 = np.mean(mse_1)
-        avg_mse_5 = np.mean(mse_5)
-        avg_mse_10 = np.mean(mse_10)
-        avg_mse_20 = np.mean(mse_20)
+        if (epoch + 1) % checkpoint_every == 0:
+            avg_mse_1 = np.mean(mse_1)
+            avg_mse_5 = np.mean(mse_5)
+            avg_mse_10 = np.mean(mse_10)
+            avg_mse_20 = np.mean(mse_20)
 
         history["train_loss"].append(avg_train_loss)
         history["val_loss"].append(avg_val_loss)
@@ -263,20 +266,32 @@ def train(
         history["val_metric"].append(avg_val_metric)
         if scheduler is not None:
             scheduler.step()
-        wandb.log(
-            {
-                "epoch": epoch + 1,
-                "train_loss": avg_train_loss,
-                "train_metric": avg_train_metric,
-                "val_loss": avg_val_loss,
-                "val_metric": avg_val_metric,
-                "mse_1": avg_mse_1,
-                "mse_5": avg_mse_5,
-                "mse_10": avg_mse_10,
-                "mse_20": avg_mse_20,
-                "lr": scheduler.get_last_lr()[0] if scheduler else lr,
-            }
-        )
+        if (epoch + 1) % checkpoint_every == 0:
+            wandb.log(
+                {
+                    "epoch": epoch + 1,
+                    "train_loss": avg_train_loss,
+                    "train_metric": avg_train_metric,
+                    "val_loss": avg_val_loss,
+                    "val_metric": avg_val_metric,
+                    "mse_1": avg_mse_1,
+                    "mse_5": avg_mse_5,
+                    "mse_10": avg_mse_10,
+                    "mse_20": avg_mse_20,
+                    "lr": scheduler.get_last_lr()[0] if scheduler else lr,
+                }
+            )
+        else:
+            wandb.log(
+                {
+                    "epoch": epoch + 1,
+                    "train_loss": avg_train_loss,
+                    "train_metric": avg_train_metric,
+                    "val_loss": avg_val_loss,
+                    "val_metric": avg_val_metric,
+                    "lr": scheduler.get_last_lr()[0] if scheduler else lr,
+                }
+            )
 
         if avg_val_loss < history["best_val_loss"]:
             checkpoint_path = os.path.join(checkpoint_dir, "best_model.pt")
@@ -339,25 +354,25 @@ def train(
 
 
 if __name__ == "__main__":
-    model = GNN(
-        n_layers=4,
+    model = GNS(
+        n_layers=10,
         in_node_nf=1,
         out_node_nf=3,
         in_edge_nf=3,
-        hidden_nf=64,
+        hidden_nf=128,
         device=device,
         norm=False,
         activation=nn.SiLU(),
-    ).to(dtype=dtype)
+    ).to(dtype=dtype).to(device=device)
 
     history = train(
         model=model,
         cluster_method="radius",
         cluster_parameter=0.1,
         batch_size=1,
-        checkpoint_every=100,
-        n_epochs=200,
-        lr=1e-5,
+        checkpoint_every=200,
+        n_epochs=10000,
+        lr=1e-4,
         weight_decay=1e-8,
         device=device,
         subset=True,

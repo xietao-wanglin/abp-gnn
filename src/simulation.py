@@ -190,6 +190,13 @@ class Simulation:
 
     def get_derivatives(self):
         return self.times, self.derivatives
+    
+    def get_extended_solutions(self):
+        params = np.vstack([self.rot_couple, self.v0, self.rot_couple])
+        params = params[np.newaxis, ...]
+        params_repeat = np.repeat(params, self.timesteps, axis=0)
+        extended_solution = np.concat([self.pos_absolute, params_repeat], axis=1)
+        return self.times, extended_solution
 
 
 class LennardJonesSimulation(Simulation):
