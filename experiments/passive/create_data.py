@@ -31,7 +31,9 @@ if __name__ == "__main__":
         np.random.seed(i)
         N = np.random.randint(60, 120)
         N_passive = np.random.randint(0, N)
-        rot_rate, v0, rot_couple, initial_state = generate_state(N=N, N_passive=N_passive)
+        rot_rate, v0, rot_couple, initial_state = generate_state(
+            N=N, N_passive=N_passive
+        )
         sim = RepulsiveSimulation(
             N=N,
             v0=v0,
@@ -54,7 +56,9 @@ if __name__ == "__main__":
         np.random.seed(98743 * i + 4500)
         N = np.random.randint(60, 120)
         N_passive = np.random.randint(0, N)
-        rot_rate, v0, rot_couple, initial_state = generate_state(N=N, N_passive=N_passive)
+        rot_rate, v0, rot_couple, initial_state = generate_state(
+            N=N, N_passive=N_passive
+        )
         sim = RepulsiveSimulation(
             N=N,
             v0=v0,
@@ -77,7 +81,9 @@ if __name__ == "__main__":
         np.random.seed(983 * i + 2000)
         N = np.random.randint(60, 120)
         N_passive = np.random.randint(0, N)
-        rot_rate, v0, rot_couple, initial_state = generate_state(N=N, N_passive=N_passive)
+        rot_rate, v0, rot_couple, initial_state = generate_state(
+            N=N, N_passive=N_passive
+        )
         sim = RepulsiveSimulation(
             N=N,
             v0=v0,

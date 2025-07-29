@@ -324,7 +324,7 @@ if __name__ == "__main__":
         cluster_method="radius",
         cluster_parameter=0.0625,
         batch_size=1,
-        checkpoint_every=200, # 3600
+        checkpoint_every=200,  # 3600
         n_epochs=10000,
         lr=1e-4,
         weight_decay=1e-8,

@@ -21,7 +21,7 @@ def generate_state(N, N_passive):
 
 
 if __name__ == "__main__":
-    N = 1000
+    N = 2500
     N_passive = 0
     rot_rate = np.ones(N)
     rot_rate[:N_passive] = np.zeros(N_passive)
@@ -32,18 +32,18 @@ if __name__ == "__main__":
     np.random.seed(0)
     initial_state = np.random.random(3 * N)
     initial_state[2::3] = initial_state[2::3] * 2 * np.pi
-    initial_state[0::3] = initial_state[0::3] * 1
-    initial_state[1::3] = initial_state[1::3] * 1
+    initial_state[0::3] = initial_state[0::3] * 5
+    initial_state[1::3] = initial_state[1::3] * 5
     initial_state[2 : N_passive * 3 : 3] = initial_state[2 : N_passive * 3 : 3] * 0
     initial_state = initial_state.reshape(N, 3).T
     # sim_loc = './data/old/simulation_test_20.npy'
     # positions_true = np.load(sim_loc)
     # initial_state = positions_true[0]
-    #initial_state = generate_state(N=N, delta=0.0)
+    # initial_state = generate_state(N=N, delta=0.0)
     sim = RepulsiveSimulation(
         N=N,
         v0=v0,
-        L_box=10.0,
+        L_box=5.0,
         delta_t=0.1,
         rot_couple=rot_couple,
         sigma=0.025,
@@ -52,7 +52,7 @@ if __name__ == "__main__":
         timesteps=200,
         initial_state=initial_state,
         periodic=True,
-        solver_times=False
+        solver_times=False,
     )
     start = time.time()
     sim.solve_dynamics(method="RK45", max_time=2)
@@ -61,11 +61,13 @@ if __name__ == "__main__":
     times, loc = sim.get_solution_abs()
     sim.create_animation(filename=None, timesteps=len(times), axis_offset=0)
     offset = 0
-    print(np.diff(times[offset:]).mean(), 
-          np.median(np.diff(times[offset:])), 
-          np.min(np.diff(times[offset:])), 
-          np.max(np.diff(times[offset:])), 
-          len(times[offset:]))
+    print(
+        np.diff(times[offset:]).mean(),
+        np.median(np.diff(times[offset:])),
+        np.min(np.diff(times[offset:])),
+        np.max(np.diff(times[offset:])),
+        len(times[offset:]),
+    )
     print("Steps until 1e-3")
     print((np.diff(times) < 1e-3).sum())
     print("Time until 1e-3")

@@ -45,7 +45,7 @@ def discrete_simulation(
     """
     Process multiple simulations for training.
     Returns list of (input, target) pairs.
-    
+
     Parameters
     ----------
     simulation_list: List
@@ -94,7 +94,9 @@ def discrete_simulation(
             x = sim[t]
             y = sim[t + 1][:3]
 
-            x_bounded = apply_periodic_boundary(x[:3])  # Ensure [0, 1] x [0, 1] x [0, 2pi]
+            x_bounded = apply_periodic_boundary(
+                x[:3]
+            )  # Ensure [0, 1] x [0, 1] x [0, 2pi]
 
             edge_index, edge_attr = compute_graph(
                 x_bounded,
@@ -112,10 +114,10 @@ def discrete_simulation(
                     y=label,
                     edge_index=edge_index.to(device),
                     edge_attr=edge_attr.to(device).to(dtype=dtype),
-                    trajectory=apply_periodic_boundary(sim[t+1:t+20, :3]),
-                    full_x = x_bounded.T.to(device).to(dtype=dtype)
+                    trajectory=apply_periodic_boundary(sim[t + 1 : t + 20, :3]),
+                    full_x=x_bounded.T.to(device).to(dtype=dtype),
                 )
-            
+
             if extended_data:
                 x[2] = x[2] % (2 * torch.pi)
                 data = Data(
@@ -123,9 +125,9 @@ def discrete_simulation(
                     y=label,
                     edge_index=edge_index.to(device),
                     edge_attr=edge_attr.to(device).to(dtype=dtype),
-                    trajectory=apply_periodic_boundary(sim[t+1:t+20, :3]),
-                    full_x = x_bounded.T.to(device).to(dtype=dtype),
-                    particle_feats = x[3:].T.to(device).to(dtype=dtype)
+                    trajectory=apply_periodic_boundary(sim[t + 1 : t + 20, :3]),
+                    full_x=x_bounded.T.to(device).to(dtype=dtype),
+                    particle_feats=x[3:].T.to(device).to(dtype=dtype),
                 )
             if not extended_data and not use_relative_encoding:
                 data = Data(
@@ -133,7 +135,7 @@ def discrete_simulation(
                     y=label,
                     edge_index=edge_index.to(device),
                     edge_attr=edge_attr.to(device),
-                    trajectory=apply_periodic_boundary(sim[t+1:t+20, :3]),
+                    trajectory=apply_periodic_boundary(sim[t + 1 : t + 20, :3]),
                 ).to(dtype=dtype)
 
             data_pairs.append(data)
@@ -253,8 +255,8 @@ def compute_graph(
         dx = x_coords.unsqueeze(1) - x_coords.unsqueeze(0)
         dy = y_coords.unsqueeze(1) - y_coords.unsqueeze(0)
 
-        dx = dx - box_length*torch.round(dx/box_length)
-        dy = dy - box_length*torch.round(dy/box_length)
+        dx = dx - box_length * torch.round(dx / box_length)
+        dy = dy - box_length * torch.round(dy / box_length)
 
         distances = torch.sqrt(dx.pow(2) + dy.pow(2))
         edges = torch.where(distances < p)
@@ -291,7 +293,7 @@ def compute_graph(
     elif use_relative_encoding:
         row, col = edge_index
         rel_pos_raw = xy[row] - xy[col]
-        rel_pos = rel_pos_raw - box_length*torch.round(rel_pos_raw/box_length)
+        rel_pos = rel_pos_raw - box_length * torch.round(rel_pos_raw / box_length)
         rel_dist = torch.norm(rel_pos, dim=-1, keepdim=True)
         edge_attr = torch.cat([rel_pos, rel_dist], dim=-1)
     else:

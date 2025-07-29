@@ -124,7 +124,8 @@ class GNN(nn.Module):
         x = self.decoder(x)
 
         return x
-    
+
+
 class GNS_Layer(MessagePassing):
     def __init__(
         self, hidden_nf, edge_nf, activation=nn.SiLU(), dropout=0.0, norm=True
@@ -184,6 +185,7 @@ class GNS_Layer(MessagePassing):
 
         return x_new
 
+
 class GNS(nn.Module):
     def __init__(
         self,
@@ -216,7 +218,7 @@ class GNS(nn.Module):
             nn.Linear(hidden_nf, hidden_nf),
             activation,
         )
-        
+
         self.edge_encoder = nn.Sequential(
             nn.Linear(in_edge_nf, hidden_nf),
             activation,

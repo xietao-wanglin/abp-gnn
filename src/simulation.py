@@ -113,7 +113,7 @@ class Simulation:
                         y0=self.positions[i].T.reshape(3 * self.N),
                         t_eval=[t + self.delta_t],
                         method=method,
-                        atol=1e-9, 
+                        atol=1e-9,
                         rtol=1e-6,
                     )
                     next_state = sol.y[:, -1]
@@ -129,7 +129,7 @@ class Simulation:
                     t_span=(0, max_time),
                     y0=self.positions[0].T.reshape(3 * self.N),
                     method=method,
-                    atol=1e-9, 
+                    atol=1e-9,
                     rtol=1e-6,
                 )
                 self.times = sol.t
@@ -140,7 +140,7 @@ class Simulation:
                     y0=self.positions[0].T.reshape(3 * self.N),
                     t_eval=self.times,
                     method=method,
-                    atol=1e-9, 
+                    atol=1e-9,
                     rtol=1e-6,
                 )
             self.pos_absolute = (sol.y).T.reshape(-1, self.N, 3).transpose((0, 2, 1))
@@ -190,7 +190,7 @@ class Simulation:
 
     def get_derivatives(self):
         return self.times, self.derivatives
-    
+
     def get_extended_solutions(self):
         params = np.vstack([self.rot_couple, self.v0, self.rot_couple])
         params = params[np.newaxis, ...]
@@ -375,7 +375,8 @@ class RepulsiveSimulation(Simulation):
         dthetadt = self.rot_rate + self.rot_couple * interaction
         derivative = np.vstack([dxdt, dydt, dthetadt])
         return derivative.T.reshape(3 * self.N)
-    
+
+
 class WCASimulation(Simulation):
     def __init__(
         self,
@@ -417,7 +418,7 @@ class WCASimulation(Simulation):
         """
         distances = np.sqrt(dx**2 + dy**2)
 
-        r_cutoff = (2**(1/6))*self.sigma
+        r_cutoff = (2 ** (1 / 6)) * self.sigma
 
         mask = (distances < r_cutoff) & (distances > 0)
 
@@ -465,7 +466,8 @@ class WCASimulation(Simulation):
         dthetadt = self.rot_rate + self.rot_couple * interaction
         derivative = np.vstack([dxdt, dydt, dthetadt])
         return derivative.T.reshape(3 * self.N)
-    
+
+
 class SoftRepulsionSimulation(Simulation):
     def __init__(
         self,
@@ -506,20 +508,20 @@ class SoftRepulsionSimulation(Simulation):
         Computes respulsion forces for all particle pairs.
         """
         r_cutoff = np.inf
-        
+
         distances = np.sqrt(dx**2 + dy**2)
-        
+
         mask = (distances > 0) & (distances < r_cutoff)
         exp_factor = np.empty_like(distances)
         exp_factor.fill(0.0)
         rs = distances[mask] / self.sigma
-        exp_factor[mask] = np.exp(-(rs ** 2))
-        
-        prefac = (2.0 * self.epsilon) / (self.sigma ** 2)
-        
+        exp_factor[mask] = np.exp(-(rs**2))
+
+        prefac = (2.0 * self.epsilon) / (self.sigma**2)
+
         Fx = prefac * exp_factor * dx
         Fy = prefac * exp_factor * dy
-        
+
         Fx_total = np.sum(Fx, axis=1)
         Fy_total = np.sum(Fy, axis=1)
 

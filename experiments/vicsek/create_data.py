@@ -93,4 +93,4 @@ if __name__ == "__main__":
         )
         sim.solve_dynamics(method="RK45")
         times, loc = sim.get_solution_abs()
-        np.save(f"./experiments/vicsek/data/test_{i+4}.npy", loc)
+        np.save(f"./experiments/vicsek/data/test_{i + 4}.npy", loc)

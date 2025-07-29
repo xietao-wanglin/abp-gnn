@@ -1,5 +1,10 @@
 from src.models import GNS
-from src.utils import discrete_simulation, ParticleDataset, apply_periodic_boundary, compute_graph
+from src.utils import (
+    discrete_simulation,
+    ParticleDataset,
+    apply_periodic_boundary,
+    compute_graph,
+)
 
 import torch
 import torch.nn as nn
@@ -235,15 +240,24 @@ def train(
                 if (epoch + 1) % checkpoint_every == 0:
                     gt_trajectory = batch.trajectory
                     rollout = torch.zeros_like(gt_trajectory)
-                    rollout[0] = apply_periodic_boundary((pred + batch.full_x).T) # Rollout manually
+                    rollout[0] = apply_periodic_boundary(
+                        (pred + batch.full_x).T
+                    )  # Rollout manually
                     particle_feats = batch.particle_feats
                     for roll in range(18):
                         x = rollout[roll]
                         inp = torch.cat([x[2].unsqueeze(0).T, particle_feats], dim=1)
-                        edge_index, edge_attr = compute_graph(x, method="radius", p=0.1, use_distance=False, use_relative_encoding=True, box_length=1)
+                        edge_index, edge_attr = compute_graph(
+                            x,
+                            method="radius",
+                            p=0.1,
+                            use_distance=False,
+                            use_relative_encoding=True,
+                            box_length=1,
+                        )
                         data = Data(x=inp, edge_index=edge_index, edge_attr=edge_attr)
                         pred = model(data)
-                        rollout[roll+1] = apply_periodic_boundary((pred + x.T).T)
+                        rollout[roll + 1] = apply_periodic_boundary((pred + x.T).T)
                     mse_trajectory = (rollout - gt_trajectory).pow(2)
                     mse_1.append(mse_trajectory[0].mean().item())
                     mse_5.append(mse_trajectory[:5].mean().item())
@@ -358,16 +372,20 @@ def train(
 
 
 if __name__ == "__main__":
-    model = GNS(
-        n_layers=10,
-        in_node_nf=4, # Angle + 3 parameters
-        out_node_nf=3,
-        in_edge_nf=3,
-        hidden_nf=128,
-        device=device,
-        norm=False,
-        activation=nn.SiLU(),
-    ).to(dtype=dtype).to(device=device)
+    model = (
+        GNS(
+            n_layers=10,
+            in_node_nf=4,  # Angle + 3 parameters
+            out_node_nf=3,
+            in_edge_nf=3,
+            hidden_nf=128,
+            device=device,
+            norm=False,
+            activation=nn.SiLU(),
+        )
+        .to(dtype=dtype)
+        .to(device=device)
+    )
 
     history = train(
         model=model,
