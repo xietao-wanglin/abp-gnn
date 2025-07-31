@@ -5,7 +5,7 @@ from matplotlib.animation import FuncAnimation
 from typing import Optional
 from tqdm import tqdm
 from scipy.optimize import root
-
+from time import time
 
 class Simulation:
     def __init__(
@@ -58,8 +58,8 @@ class Simulation:
         dx = x[:, None] - x[None, :]
         dy = y[:, None] - y[None, :]
         if self.periodic:
-            dx = dx - self.L_box * np.round(dx / self.L_box)  # Periodic boundary for x
-            dy = dy - self.L_box * np.round(dy / self.L_box)  # Periodic boundary for y
+            dx = dx - self.L_box * np.round(dx / self.L_box)
+            dy = dy - self.L_box * np.round(dy / self.L_box)
         distances = np.sqrt(dx**2 + dy**2)
 
         neighbor_mask = (distances < self.couple_radius) & (distances > 0)
@@ -80,11 +80,13 @@ class Simulation:
         return positions
 
     def solve_dynamics(
-        self, method: Optional[str] = "RK45", max_time: Optional[float] = 1
+        self, method: Optional[str] = "RK45", max_time: Optional[float] = 1, debug: Optional[bool] = False,
     ):
+        if debug:
+            start = time()
         if self.periodic:
             for i, t in enumerate(
-                tqdm(self.times[:-1], leave=False, desc="Simulation")
+                tqdm(self.times[:-1], leave=debug, desc="Simulation")
             ):
                 derivatives = self.particle_system(
                     t, self.positions[i].T.reshape(3 * self.N)
@@ -145,10 +147,12 @@ class Simulation:
                 )
             self.pos_absolute = (sol.y).T.reshape(-1, self.N, 3).transpose((0, 2, 1))
             self.positions = (sol.y).T.reshape(-1, self.N, 3).transpose((0, 2, 1))
-
+        if debug:
+            end = time()
+            print(f"Time elapsed: {end-start:.2f} seconds")
     def create_animation(
         self,
-        timesteps: Optional[int] = 100,
+        timesteps: Optional[int] = None,
         filename: Optional[str] = None,
         axis_offset: Optional[float] = 0.0,
     ):
@@ -176,7 +180,8 @@ class Simulation:
             points.set_array(positions[fn][2])
 
             f.canvas.draw_idle()
-
+        if timesteps is None:
+            timesteps = self.timesteps
         animation = FuncAnimation(f, update, interval=50, frames=timesteps)
         if filename is not None:
             animation.save(f"./videos/{filename}", writer="ffmpeg", fps=20)
@@ -235,9 +240,6 @@ class LennardJonesSimulation(Simulation):
         self.sigma = sigma
 
     def repulsion(self, dx, dy, r_cutoff=np.inf):
-        """
-        Computes respulsion forces for all particle pairs.
-        """
         distances = np.sqrt(dx**2 + dy**2)
 
         mask = (distances < r_cutoff) & (distances > 0)
@@ -268,8 +270,8 @@ class LennardJonesSimulation(Simulation):
         dx = x[:, None] - x[None, :]
         dy = y[:, None] - y[None, :]
 
-        dx = dx - self.L_box * np.round(dx / self.L_box)  # Periodic boundary for x
-        dy = dy - self.L_box * np.round(dy / self.L_box)  # Periodic boundary for y
+        dx = dx - self.L_box * np.round(dx / self.L_box)
+        dy = dy - self.L_box * np.round(dy / self.L_box)
         distances = np.sqrt(dx**2 + dy**2)
 
         neighbor_mask = (distances < self.couple_radius) & (distances > 0)
@@ -324,9 +326,6 @@ class RepulsiveSimulation(Simulation):
         self.sigma = sigma
 
     def repulsion(self, dx, dy, r_cutoff=np.inf):
-        """
-        Computes respulsion forces for all particle pairs.
-        """
         distances = np.sqrt(dx**2 + dy**2)
 
         mask = (distances < r_cutoff) & (distances > 0)
@@ -357,8 +356,8 @@ class RepulsiveSimulation(Simulation):
         dx = x[:, None] - x[None, :]
         dy = y[:, None] - y[None, :]
 
-        dx = dx - self.L_box * np.round(dx / self.L_box)  # Periodic boundary for x
-        dy = dy - self.L_box * np.round(dy / self.L_box)  # Periodic boundary for y
+        dx = dx - self.L_box * np.round(dx / self.L_box)
+        dy = dy - self.L_box * np.round(dy / self.L_box)
         distances = np.sqrt(dx**2 + dy**2)
 
         neighbor_mask = (distances < self.couple_radius) & (distances > 0)
@@ -413,9 +412,6 @@ class WCASimulation(Simulation):
         self.sigma = sigma
 
     def repulsion(self, dx, dy):
-        """
-        Computes respulsion forces for all particle pairs.
-        """
         distances = np.sqrt(dx**2 + dy**2)
 
         r_cutoff = (2 ** (1 / 6)) * self.sigma
@@ -448,8 +444,8 @@ class WCASimulation(Simulation):
         dx = x[:, None] - x[None, :]
         dy = y[:, None] - y[None, :]
 
-        dx = dx - self.L_box * np.round(dx / self.L_box)  # Periodic boundary for x
-        dy = dy - self.L_box * np.round(dy / self.L_box)  # Periodic boundary for y
+        dx = dx - self.L_box * np.round(dx / self.L_box)
+        dy = dy - self.L_box * np.round(dy / self.L_box)
         distances = np.sqrt(dx**2 + dy**2)
 
         neighbor_mask = (distances < self.couple_radius) & (distances > 0)
@@ -504,9 +500,6 @@ class SoftRepulsionSimulation(Simulation):
         self.sigma = sigma
 
     def repulsion(self, dx, dy):
-        """
-        Computes respulsion forces for all particle pairs.
-        """
         r_cutoff = np.inf
 
         distances = np.sqrt(dx**2 + dy**2)
@@ -538,8 +531,8 @@ class SoftRepulsionSimulation(Simulation):
         dx = x[:, None] - x[None, :]
         dy = y[:, None] - y[None, :]
 
-        dx = dx - self.L_box * np.round(dx / self.L_box)  # Periodic boundary for x
-        dy = dy - self.L_box * np.round(dy / self.L_box)  # Periodic boundary for y
+        dx = dx - self.L_box * np.round(dx / self.L_box)
+        dy = dy - self.L_box * np.round(dy / self.L_box)
         distances = np.sqrt(dx**2 + dy**2)
 
         neighbor_mask = (distances < self.couple_radius) & (distances > 0)

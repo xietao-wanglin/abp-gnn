@@ -161,7 +161,7 @@ class GNS_Layer(MessagePassing):
         x_j = x[col]
         edge_features = torch.cat(
             [x_i, x_j, edge_attr], dim=-1
-        )  # Shape: [E, hidden_nf + hidden_nf + hidden_nf]
+        ) # [E, hidden_nf + hidden_nf + hidden_nf]
 
         edge_attr_new = self.edge_mlp(edge_features)
 
@@ -180,7 +180,7 @@ class GNS_Layer(MessagePassing):
 
         node_features = torch.cat(
             [x_norm, aggr_out], dim=-1
-        )  # Shape: [N, hidden_nf + hidden_nf]
+        )  # [N, hidden_nf + hidden_nf]
         x_new = self.node_mlp(node_features)
 
         return x_new
