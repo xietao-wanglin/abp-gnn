@@ -5,12 +5,14 @@ import numpy as np
 np.random.seed(0)
 
 
-def generate_state(n, n_passive, box_length=1.0):
+def generate_state(n, n_passive, n_boundary, box_length=1.0):
     rot_rate = np.ones(n)
     rot_rate[:n_passive] = np.zeros(n_passive)
     v0 = np.ones(n) * 0.1
     v0[:n_passive] = np.zeros(n_passive)
     rot_couple = np.zeros(n)
+    particle_type = np.ones(n)
+    particle_type[:n_boundary] = 0
 
     initial_state = np.random.random(3 * n)
     initial_state[2::3] *= 2 * np.pi
@@ -19,7 +21,26 @@ def generate_state(n, n_passive, box_length=1.0):
 
     initial_state = initial_state.reshape(n, 3).T
 
-    return rot_rate, v0, rot_couple, initial_state
+    return rot_rate, v0, rot_couple, particle_type, initial_state
+
+
+def chevron(n, n_boundary, box_length=1.0):
+    x = np.linspace(0, 0.8, n_boundary) + 0.1
+    y = 0.8 - np.abs(x - 0.5)
+    z = np.zeros_like(x)
+    boundary_state = np.vstack([y, x, z])
+    rot_rate = np.ones(n + n_boundary) * 1
+    v0 = np.ones(n + n_boundary) * 0.1
+    rot_couple = np.zeros(n + n_boundary)
+    initial_state = np.random.random(3 * n)
+    initial_state[2::3] *= 2 * np.pi
+    initial_state[0::3] = initial_state[0::3] * box_length
+    initial_state[1::3] = initial_state[1::3] * box_length
+
+    initial_state = initial_state.reshape(n, 3).T
+    initial_state = np.concat([initial_state, boundary_state], axis=1)
+    particle_type = np.hstack([np.ones(n), np.zeros(n_boundary)])
+    return rot_rate, v0, rot_couple, particle_type, initial_state
 
 
 def load_from_file(filepath):
@@ -29,15 +50,21 @@ def load_from_file(filepath):
 
 if __name__ == "__main__":
     box_length = 1.0
-    rot_rate, v0, rot_couple, initial_state = generate_state(
-        n=100, n_passive=30, box_length=box_length
+    rot_rate, v0, rot_couple, particle_type, initial_state = generate_state(
+        n=100, n_passive=0, n_boundary=80, box_length=box_length
     )
+
+    rot_rate, v0, rot_couple, particle_type, initial_state = chevron(
+        n=80, n_boundary=30, box_length=box_length
+    )
+
     sim = RepulsiveSimulation(
         initial_state=initial_state,
         v0=v0,
         box_length=box_length,
         delta_t=0.1,
         rot_couple=rot_couple,
+        particle_type=particle_type,
         sigma=0.025,
         epsilon=0.1,
         rot_rate=rot_rate,

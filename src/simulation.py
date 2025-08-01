@@ -8,6 +8,13 @@ from scipy.optimize import root
 from time import time
 
 
+class ParticleType:
+    BOUNDARY = 0
+    ACTIVE = 1
+    PASSIVE = 2
+    SIZE = 3
+
+
 class Simulation:
     def __init__(
         self,
@@ -16,6 +23,7 @@ class Simulation:
         rot_rate: Optional[np.ndarray | float] = None,
         rot_couple: Optional[np.ndarray | float] = None,
         couple_radius: Optional[float] = 0.1,
+        particle_type: Optional[np.ndarray] = None,
         box_length: Optional[float] = 1.0,
         timesteps: Optional[int] = 100,
         delta_t: Optional[float] = 0.1,
@@ -35,6 +43,7 @@ class Simulation:
         self.rot_rate = set_param(rot_rate, self.n, 1)
         self.rot_couple = set_param(rot_couple, self.n, 0.1)
         self.couple_radius = couple_radius
+        self.particle_type = set_param(particle_type, self.n, 1)
         self.box_length = box_length
 
         self.timesteps = timesteps
@@ -54,8 +63,10 @@ class Simulation:
         x = positions[0]
         y = positions[1]
         theta = positions[2]
-        dxdt = self.v0 * np.cos(theta)
-        dydt = self.v0 * np.sin(theta)
+
+        boundary_mask = self.particle_type > ParticleType.BOUNDARY
+        dxdt = self.v0 * np.cos(theta) * boundary_mask
+        dydt = self.v0 * np.sin(theta) * boundary_mask
 
         dx = x[:, None] - x[None, :]
         dy = y[:, None] - y[None, :]
@@ -70,7 +81,7 @@ class Simulation:
             neighbor_mask * np.sin(theta[None, :] - theta[:, None]), axis=1
         )
 
-        dthetadt = self.rot_rate + self.rot_couple * interaction
+        dthetadt = (self.rot_rate + self.rot_couple * interaction) * boundary_mask
         derivative = np.vstack([dxdt, dydt, dthetadt])
         return derivative.T.reshape(3 * self.n)
 
@@ -219,6 +230,7 @@ class LennardJonesSimulation(Simulation):
         rot_rate: Optional[np.ndarray | int] = None,
         rot_couple: Optional[np.ndarray | float] = None,
         couple_radius: Optional[float] = 0.1,
+        particle_type: Optional[np.ndarray] = None,
         epsilon: Optional[float] = 0.1,
         sigma: Optional[float] = 0.01,
         box_length: Optional[float] = 1.0,
@@ -233,6 +245,7 @@ class LennardJonesSimulation(Simulation):
             rot_rate=rot_rate,
             rot_couple=rot_couple,
             couple_radius=couple_radius,
+            particle_type=particle_type,
             box_length=box_length,
             timesteps=timesteps,
             delta_t=delta_t,
@@ -269,6 +282,8 @@ class LennardJonesSimulation(Simulation):
         x = positions[0]
         y = positions[1]
         theta = positions[2]
+
+        boundary_mask = self.particle_type > ParticleType.BOUNDARY
         dxdt = self.v0 * np.cos(theta)
         dydt = self.v0 * np.sin(theta)
 
@@ -292,6 +307,9 @@ class LennardJonesSimulation(Simulation):
 
         dthetadt = self.rot_rate + self.rot_couple * interaction
         derivative = np.vstack([dxdt, dydt, dthetadt])
+        dxdt *= boundary_mask
+        dydt *= boundary_mask
+        dthetadt *= boundary_mask
         return derivative.T.reshape(3 * self.n)
 
 
@@ -302,6 +320,7 @@ class RepulsiveSimulation(Simulation):
         v0: Optional[np.ndarray | float] = None,
         rot_rate: Optional[np.ndarray | int] = None,
         rot_couple: Optional[np.ndarray | float] = None,
+        particle_type: Optional[np.ndarray] = None,
         couple_radius: Optional[float] = 0.1,
         epsilon: Optional[float] = 0.1,
         sigma: Optional[float] = 0.01,
@@ -317,6 +336,7 @@ class RepulsiveSimulation(Simulation):
             rot_rate=rot_rate,
             rot_couple=rot_couple,
             couple_radius=couple_radius,
+            particle_type=particle_type,
             box_length=box_length,
             timesteps=timesteps,
             delta_t=delta_t,
@@ -353,6 +373,8 @@ class RepulsiveSimulation(Simulation):
         x = positions[0]
         y = positions[1]
         theta = positions[2]
+
+        boundary_mask = self.particle_type > ParticleType.BOUNDARY
         dxdt = self.v0 * np.cos(theta)
         dydt = self.v0 * np.sin(theta)
 
@@ -375,6 +397,9 @@ class RepulsiveSimulation(Simulation):
         dydt += Fy_total
 
         dthetadt = self.rot_rate + self.rot_couple * interaction
+        dxdt *= boundary_mask
+        dydt *= boundary_mask
+        dthetadt *= boundary_mask
         derivative = np.vstack([dxdt, dydt, dthetadt])
         return derivative.T.reshape(3 * self.n)
 
@@ -387,6 +412,7 @@ class WCASimulation(Simulation):
         rot_rate: Optional[np.ndarray | int] = None,
         rot_couple: Optional[np.ndarray | float] = None,
         couple_radius: Optional[float] = 0.1,
+        particle_type: Optional[np.ndarray] = None,
         epsilon: Optional[float] = 0.1,
         sigma: Optional[float] = 0.01,
         box_length: Optional[float] = 1.0,
@@ -401,6 +427,7 @@ class WCASimulation(Simulation):
             rot_rate=rot_rate,
             rot_couple=rot_couple,
             couple_radius=couple_radius,
+            particle_type=particle_type,
             box_length=box_length,
             timesteps=timesteps,
             delta_t=delta_t,
@@ -439,6 +466,8 @@ class WCASimulation(Simulation):
         x = positions[0]
         y = positions[1]
         theta = positions[2]
+
+        boundary_mask = self.particle_type > ParticleType.BOUNDARY
         dxdt = self.v0 * np.cos(theta)
         dydt = self.v0 * np.sin(theta)
 
@@ -461,6 +490,9 @@ class WCASimulation(Simulation):
         dydt += Fy_total
 
         dthetadt = self.rot_rate + self.rot_couple * interaction
+        dxdt *= boundary_mask
+        dydt *= boundary_mask
+        dthetadt *= boundary_mask
         derivative = np.vstack([dxdt, dydt, dthetadt])
         return derivative.T.reshape(3 * self.n)
 
@@ -473,6 +505,7 @@ class SoftRepulsionSimulation(Simulation):
         rot_rate: Optional[np.ndarray | int] = None,
         rot_couple: Optional[np.ndarray | float] = None,
         couple_radius: Optional[float] = 0.1,
+        particle_type: Optional[np.ndarray] = None,
         epsilon: Optional[float] = 0.1,
         sigma: Optional[float] = 0.01,
         box_length: Optional[float] = 1.0,
@@ -487,6 +520,7 @@ class SoftRepulsionSimulation(Simulation):
             rot_rate=rot_rate,
             rot_couple=rot_couple,
             couple_radius=couple_radius,
+            particle_type=particle_type,
             box_length=box_length,
             timesteps=timesteps,
             delta_t=delta_t,
@@ -524,6 +558,8 @@ class SoftRepulsionSimulation(Simulation):
         x = positions[0]
         y = positions[1]
         theta = positions[2]
+
+        boundary_mask = self.particle_type > ParticleType.BOUNDARY
         dxdt = self.v0 * np.cos(theta)
         dydt = self.v0 * np.sin(theta)
 
@@ -546,6 +582,9 @@ class SoftRepulsionSimulation(Simulation):
         dydt += Fy_total
 
         dthetadt = self.rot_rate + self.rot_couple * interaction
+        dxdt *= boundary_mask
+        dydt *= boundary_mask
+        dthetadt *= boundary_mask
         derivative = np.vstack([dxdt, dydt, dthetadt])
         return derivative.T.reshape(3 * self.n)
 
