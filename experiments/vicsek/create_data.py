@@ -4,14 +4,14 @@ import numpy as np
 from tqdm import tqdm
 
 
-def generate_state(N, delta, L=1.0):
+def generate_state(n, delta, box_length=1.0):
     while True:
-        initial_state = np.random.random(3 * N)
-        initial_state[0::3] *= L
-        initial_state[1::3] *= L
+        initial_state = np.random.random(3 * n)
+        initial_state[0::3] *= box_length
+        initial_state[1::3] *= box_length
         initial_state[2::3] *= 2 * np.pi
 
-        initial_state = initial_state.reshape(N, 3).T
+        initial_state = initial_state.reshape(n, 3).T
 
         x = initial_state[0]
         y = initial_state[1]
@@ -34,13 +34,12 @@ if __name__ == "__main__":
 
     for i in tqdm(range(train_init, train_sims + train_init), desc="Training Set"):
         np.random.seed(i)
-        N = np.random.randint(60, 100)
+        n = np.random.randint(60, 100)
         rot_rate = 1
-        initial_state = generate_state(N=N, delta=0)
+        initial_state = generate_state(n=n, delta=0)
         sim = Simulation(
-            N=N,
             v0=0.1,
-            L_box=1.0,
+            box_length=1.0,
             delta_t=0.1,
             rot_couple=0.1,
             rot_rate=rot_rate,
@@ -55,13 +54,12 @@ if __name__ == "__main__":
 
     for i in tqdm(range(test_init, test_sims + test_init), desc="Test Set"):
         np.random.seed(98743 * i + 4500)
-        N = np.random.randint(60, 100)
+        n = np.random.randint(60, 100)
         rot_rate = 1
-        initial_state = generate_state(N=N, delta=0)
+        initial_state = generate_state(n=n, delta=0)
         sim = Simulation(
-            N=N,
             v0=0.1,
-            L_box=1.0,
+            box_length=1.0,
             delta_t=0.1,
             rot_couple=0.1,
             rot_rate=rot_rate,
@@ -76,13 +74,12 @@ if __name__ == "__main__":
 
     for i in tqdm(range(4), desc="Long Test Set"):
         np.random.seed(983 * i + 2000)
-        N = np.random.randint(60, 100)
+        n = np.random.randint(60, 100)
         rot_rate = 1
-        initial_state = generate_state(N=N, delta=0, L=1)
+        initial_state = generate_state(n=n, delta=0, box_length=1)
         sim = Simulation(
-            N=N,
             v0=0.1,
-            L_box=1.0,
+            box_length=1.0,
             delta_t=0.1,
             rot_couple=0.1,
             rot_rate=rot_rate,

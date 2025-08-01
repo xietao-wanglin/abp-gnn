@@ -4,18 +4,18 @@ import numpy as np
 from tqdm import tqdm
 
 
-def generate_state(N, N_passive):
-    rot_rate = np.ones(N)
-    rot_rate[:N_passive] = np.zeros(N_passive)
-    v0 = np.ones(N) * 0.1
-    v0[:N_passive] = np.zeros(N_passive)
-    rot_couple = np.ones(N) * 0.0
-    rot_couple[:N_passive] = np.zeros(N_passive)
+def generate_state(n, n_passive):
+    rot_rate = np.ones(n)
+    rot_rate[:n_passive] = np.zeros(n_passive)
+    v0 = np.ones(n) * 0.1
+    v0[:n_passive] = np.zeros(n_passive)
+    rot_couple = np.ones(n) * 0.0
+    rot_couple[:n_passive] = np.zeros(n_passive)
 
-    initial_state = np.random.random(3 * N)
+    initial_state = np.random.random(3 * n)
     initial_state[2::3] *= 2 * np.pi
 
-    initial_state = initial_state.reshape(N, 3).T
+    initial_state = initial_state.reshape(n, 3).T
 
     return rot_rate, v0, rot_couple, initial_state
 
@@ -29,15 +29,14 @@ if __name__ == "__main__":
 
     for i in tqdm(range(train_init, train_sims + train_init), desc="Training Set"):
         np.random.seed(i)
-        N = np.random.randint(60, 120)
-        N_passive = np.random.randint(0, N)
+        n = np.random.randint(60, 120)
+        n_passive = np.random.randint(0, n)
         rot_rate, v0, rot_couple, initial_state = generate_state(
-            N=N, N_passive=N_passive
+            n=n, n_passive=n_passive
         )
         sim = RepulsiveSimulation(
-            N=N,
             v0=v0,
-            L_box=1.0,
+            box_length=1.0,
             delta_t=0.1,
             rot_couple=rot_couple,
             rot_rate=rot_rate,
@@ -54,15 +53,14 @@ if __name__ == "__main__":
 
     for i in tqdm(range(test_init, test_sims + test_init), desc="Test Set"):
         np.random.seed(98743 * i + 4500)
-        N = np.random.randint(60, 120)
-        N_passive = np.random.randint(0, N)
+        n = np.random.randint(60, 120)
+        n_passive = np.random.randint(0, n)
         rot_rate, v0, rot_couple, initial_state = generate_state(
-            N=N, N_passive=N_passive
+            n=n, n_passive=n_passive
         )
         sim = RepulsiveSimulation(
-            N=N,
             v0=v0,
-            L_box=1.0,
+            box_length=1.0,
             delta_t=0.1,
             rot_couple=rot_couple,
             rot_rate=rot_rate,
@@ -79,15 +77,14 @@ if __name__ == "__main__":
 
     for i in tqdm(range(4), desc="Long Test Set"):
         np.random.seed(983 * i + 2000)
-        N = np.random.randint(60, 120)
-        N_passive = np.random.randint(0, N)
+        n = np.random.randint(60, 120)
+        n_passive = np.random.randint(0, n)
         rot_rate, v0, rot_couple, initial_state = generate_state(
-            N=N, N_passive=N_passive
+            n=n, n_passive=n_passive
         )
         sim = RepulsiveSimulation(
-            N=N,
             v0=v0,
-            L_box=1.0,
+            box_length=1.0,
             delta_t=0.1,
             rot_couple=rot_couple,
             rot_rate=rot_rate,

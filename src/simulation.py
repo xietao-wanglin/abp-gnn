@@ -10,45 +10,46 @@ from time import time
 class Simulation:
     def __init__(
         self,
-        N: Optional[int] = 8,
+        initial_state: Optional[np.ndarray] = None,
         v0: Optional[np.ndarray | float] = None,
         rot_rate: Optional[np.ndarray | float] = None,
         rot_couple: Optional[np.ndarray | float] = None,
         couple_radius: Optional[float] = 0.1,
-        L_box: Optional[float] = 1.0,
+        box_length: Optional[float] = 1.0,
         timesteps: Optional[int] = 100,
         delta_t: Optional[float] = 0.1,
-        initial_state: Optional[np.ndarray] = None,
         periodic: Optional[bool] = True,
         solver_times: Optional[bool] = False,
         seed: Optional[int] = 0,
     ):
-        self.N = N
-        self.v0 = set_param(v0, N, 0.1)
-        self.rot_rate = set_param(rot_rate, N, 1)
-        self.rot_couple = set_param(rot_couple, N, 0.1)
+        np.random.seed(seed)
+        if initial_state is None:
+            self.n = 8
+            initial_state = np.random.random(3 * self.n) * box_length
+            initial_state[2::3] = initial_state[2::3] * 2 * np.pi / box_length
+            initial_state = initial_state.reshape(self.n, 3).T
+        else:
+            self.n = initial_state.shape[1]
+        self.v0 = set_param(v0, self.n, 0.1)
+        self.rot_rate = set_param(rot_rate, self.n, 1)
+        self.rot_couple = set_param(rot_couple, self.n, 0.1)
         self.couple_radius = couple_radius
-        self.L_box = L_box
+        self.L_box = box_length
 
         self.timesteps = timesteps
         self.delta_t = delta_t
         self.periodic = periodic
         self.solver_times = solver_times
 
-        np.random.seed(seed)
-        if initial_state is None:
-            initial_state = np.random.random(3 * N) * L_box
-            initial_state[2::3] = initial_state[2::3] * 2 * np.pi / L_box
-            initial_state = initial_state.reshape(N, 3).T
-        self.positions = np.zeros(shape=(self.timesteps, 3, self.N))
+        self.positions = np.zeros(shape=(self.timesteps, 3, self.n))
         self.positions[0] = initial_state
-        self.pos_absolute = np.zeros(shape=(self.timesteps, 3, self.N))
+        self.pos_absolute = np.zeros(shape=(self.timesteps, 3, self.n))
         self.pos_absolute[0] = initial_state
-        self.derivatives = np.zeros(shape=(self.timesteps - 1, 3, self.N))
+        self.derivatives = np.zeros(shape=(self.timesteps - 1, 3, self.n))
         self.times = np.arange(0, self.delta_t * self.timesteps, self.delta_t)
 
     def particle_system(self, t, positions):
-        positions = positions.reshape(self.N, 3).T
+        positions = positions.reshape(self.n, 3).T
         x = positions[0]
         y = positions[1]
         theta = positions[2]
@@ -70,7 +71,7 @@ class Simulation:
 
         dthetadt = self.rot_rate + self.rot_couple * interaction
         derivative = np.vstack([dxdt, dydt, dthetadt])
-        return derivative.T.reshape(3 * self.N)
+        return derivative.T.reshape(3 * self.n)
 
     def apply_periodic_boundary(self, positions):
         positions = positions.copy()
@@ -89,11 +90,11 @@ class Simulation:
                 tqdm(self.times[:-1], leave=debug, desc="Simulation")
             ):
                 derivatives = self.particle_system(
-                    t, self.positions[i].T.reshape(3 * self.N)
+                    t, self.positions[i].T.reshape(3 * self.n)
                 )
                 if method == "Euler":
                     next_state = (
-                        self.positions[i].T.reshape(3 * self.N)
+                        self.positions[i].T.reshape(3 * self.n)
                         + self.delta_t * derivatives
                     )
                 elif method == "Backward Euler":
@@ -101,35 +102,35 @@ class Simulation:
                     def equation(y):
                         return (
                             y
-                            - self.positions[i].T.reshape(3 * self.N)
+                            - self.positions[i].T.reshape(3 * self.n)
                             - self.delta_t * self.particle_system(t + self.delta_t, y)
                         )
 
-                    initial_guess = self.positions[i].T.reshape(3 * self.N)
+                    initial_guess = self.positions[i].T.reshape(3 * self.n)
                     x = root(equation, initial_guess, method="lm")
                     next_state = x.x
                 else:
                     sol = solve_ivp(
                         self.particle_system,
                         t_span=(t, t + self.delta_t),
-                        y0=self.positions[i].T.reshape(3 * self.N),
+                        y0=self.positions[i].T.reshape(3 * self.n),
                         t_eval=[t + self.delta_t],
                         method=method,
                         atol=1e-9,
                         rtol=1e-6,
                     )
                     next_state = sol.y[:, -1]
-                self.pos_absolute[i + 1] = next_state.reshape(self.N, 3).T
+                self.pos_absolute[i + 1] = next_state.reshape(self.n, 3).T
                 next_state = self.apply_periodic_boundary(next_state)
-                self.positions[i + 1] = next_state.reshape(self.N, 3).T
-                self.derivatives[i] = derivatives.reshape(self.N, 3).T
+                self.positions[i + 1] = next_state.reshape(self.n, 3).T
+                self.derivatives[i] = derivatives.reshape(self.n, 3).T
 
         else:
             if self.solver_times:
                 sol = solve_ivp(
                     self.particle_system,
                     t_span=(0, max_time),
-                    y0=self.positions[0].T.reshape(3 * self.N),
+                    y0=self.positions[0].T.reshape(3 * self.n),
                     method=method,
                     atol=1e-9,
                     rtol=1e-6,
@@ -139,14 +140,14 @@ class Simulation:
                 sol = solve_ivp(
                     self.particle_system,
                     t_span=(0, self.times[-1]),
-                    y0=self.positions[0].T.reshape(3 * self.N),
+                    y0=self.positions[0].T.reshape(3 * self.n),
                     t_eval=self.times,
                     method=method,
                     atol=1e-9,
                     rtol=1e-6,
                 )
-            self.pos_absolute = (sol.y).T.reshape(-1, self.N, 3).transpose((0, 2, 1))
-            self.positions = (sol.y).T.reshape(-1, self.N, 3).transpose((0, 2, 1))
+            self.pos_absolute = (sol.y).T.reshape(-1, self.n, 3).transpose((0, 2, 1))
+            self.positions = (sol.y).T.reshape(-1, self.n, 3).transpose((0, 2, 1))
         if debug:
             end = time()
             print(f"Time elapsed: {end-start:.2f} seconds")
@@ -207,28 +208,26 @@ class Simulation:
 class LennardJonesSimulation(Simulation):
     def __init__(
         self,
-        N: Optional[int] = 8,
+        initial_state: Optional[np.ndarray] = None,
         v0: Optional[np.ndarray | float] = None,
         rot_rate: Optional[np.ndarray | int] = None,
         rot_couple: Optional[np.ndarray | float] = None,
         couple_radius: Optional[float] = 0.1,
         epsilon: Optional[float] = 0.1,
         sigma: Optional[float] = 0.01,
-        L_box: Optional[float] = 1.0,
+        box_length: Optional[float] = 1.0,
         timesteps: Optional[int] = 100,
         delta_t: Optional[float] = 0.1,
-        initial_state: Optional[np.ndarray] = None,
         periodic: Optional[bool] = True,
         solver_times: Optional[bool] = False,
         seed: Optional[int] = 0,
     ):
         super().__init__(
-            N=N,
             v0=v0,
             rot_rate=rot_rate,
             rot_couple=rot_couple,
             couple_radius=couple_radius,
-            L_box=L_box,
+            box_length=box_length,
             timesteps=timesteps,
             delta_t=delta_t,
             initial_state=initial_state,
@@ -260,7 +259,7 @@ class LennardJonesSimulation(Simulation):
         return Fx_total, Fy_total
 
     def particle_system(self, t, positions):
-        positions = positions.reshape(self.N, 3).T
+        positions = positions.reshape(self.n, 3).T
         x = positions[0]
         y = positions[1]
         theta = positions[2]
@@ -287,34 +286,32 @@ class LennardJonesSimulation(Simulation):
 
         dthetadt = self.rot_rate + self.rot_couple * interaction
         derivative = np.vstack([dxdt, dydt, dthetadt])
-        return derivative.T.reshape(3 * self.N)
+        return derivative.T.reshape(3 * self.n)
 
 
 class RepulsiveSimulation(Simulation):
     def __init__(
         self,
-        N: Optional[int] = 8,
+        initial_state: Optional[np.ndarray] = None,
         v0: Optional[np.ndarray | float] = None,
         rot_rate: Optional[np.ndarray | int] = None,
         rot_couple: Optional[np.ndarray | float] = None,
         couple_radius: Optional[float] = 0.1,
         epsilon: Optional[float] = 0.1,
         sigma: Optional[float] = 0.01,
-        L_box: Optional[float] = 1.0,
+        box_length: Optional[float] = 1.0,
         timesteps: Optional[int] = 100,
         delta_t: Optional[float] = 0.1,
-        initial_state: Optional[np.ndarray] = None,
         periodic: Optional[bool] = True,
         solver_times: Optional[bool] = False,
         seed: Optional[int] = 0,
     ):
         super().__init__(
-            N=N,
             v0=v0,
             rot_rate=rot_rate,
             rot_couple=rot_couple,
             couple_radius=couple_radius,
-            L_box=L_box,
+            box_length=box_length,
             timesteps=timesteps,
             delta_t=delta_t,
             initial_state=initial_state,
@@ -346,7 +343,7 @@ class RepulsiveSimulation(Simulation):
         return Fx_total, Fy_total
 
     def particle_system(self, t, positions):
-        positions = positions.reshape(self.N, 3).T
+        positions = positions.reshape(self.n, 3).T
         x = positions[0]
         y = positions[1]
         theta = positions[2]
@@ -373,34 +370,32 @@ class RepulsiveSimulation(Simulation):
 
         dthetadt = self.rot_rate + self.rot_couple * interaction
         derivative = np.vstack([dxdt, dydt, dthetadt])
-        return derivative.T.reshape(3 * self.N)
+        return derivative.T.reshape(3 * self.n)
 
 
 class WCASimulation(Simulation):
     def __init__(
         self,
-        N: Optional[int] = 8,
+        initial_state: Optional[np.ndarray] = None,
         v0: Optional[np.ndarray | float] = None,
         rot_rate: Optional[np.ndarray | int] = None,
         rot_couple: Optional[np.ndarray | float] = None,
         couple_radius: Optional[float] = 0.1,
         epsilon: Optional[float] = 0.1,
         sigma: Optional[float] = 0.01,
-        L_box: Optional[float] = 1.0,
+        box_length: Optional[float] = 1.0,
         timesteps: Optional[int] = 100,
         delta_t: Optional[float] = 0.1,
-        initial_state: Optional[np.ndarray] = None,
         periodic: Optional[bool] = True,
         solver_times: Optional[bool] = False,
         seed: Optional[int] = 0,
     ):
         super().__init__(
-            N=N,
             v0=v0,
             rot_rate=rot_rate,
             rot_couple=rot_couple,
             couple_radius=couple_radius,
-            L_box=L_box,
+            box_length=box_length,
             timesteps=timesteps,
             delta_t=delta_t,
             initial_state=initial_state,
@@ -434,7 +429,7 @@ class WCASimulation(Simulation):
         return Fx_total, Fy_total
 
     def particle_system(self, t, positions):
-        positions = positions.reshape(self.N, 3).T
+        positions = positions.reshape(self.n, 3).T
         x = positions[0]
         y = positions[1]
         theta = positions[2]
@@ -461,34 +456,32 @@ class WCASimulation(Simulation):
 
         dthetadt = self.rot_rate + self.rot_couple * interaction
         derivative = np.vstack([dxdt, dydt, dthetadt])
-        return derivative.T.reshape(3 * self.N)
+        return derivative.T.reshape(3 * self.n)
 
 
 class SoftRepulsionSimulation(Simulation):
     def __init__(
         self,
-        N: Optional[int] = 8,
+        initial_state: Optional[np.ndarray] = None,
         v0: Optional[np.ndarray | float] = None,
         rot_rate: Optional[np.ndarray | int] = None,
         rot_couple: Optional[np.ndarray | float] = None,
         couple_radius: Optional[float] = 0.1,
         epsilon: Optional[float] = 0.1,
         sigma: Optional[float] = 0.01,
-        L_box: Optional[float] = 1.0,
+        box_length: Optional[float] = 1.0,
         timesteps: Optional[int] = 100,
         delta_t: Optional[float] = 0.1,
-        initial_state: Optional[np.ndarray] = None,
         periodic: Optional[bool] = True,
         solver_times: Optional[bool] = False,
         seed: Optional[int] = 0,
     ):
         super().__init__(
-            N=N,
             v0=v0,
             rot_rate=rot_rate,
             rot_couple=rot_couple,
             couple_radius=couple_radius,
-            L_box=L_box,
+            box_length=box_length,
             timesteps=timesteps,
             delta_t=delta_t,
             initial_state=initial_state,
@@ -521,7 +514,7 @@ class SoftRepulsionSimulation(Simulation):
         return Fx_total, Fy_total
 
     def particle_system(self, t, positions):
-        positions = positions.reshape(self.N, 3).T
+        positions = positions.reshape(self.n, 3).T
         x = positions[0]
         y = positions[1]
         theta = positions[2]
@@ -548,13 +541,13 @@ class SoftRepulsionSimulation(Simulation):
 
         dthetadt = self.rot_rate + self.rot_couple * interaction
         derivative = np.vstack([dxdt, dydt, dthetadt])
-        return derivative.T.reshape(3 * self.N)
+        return derivative.T.reshape(3 * self.n)
 
 
-def set_param(param, N, default):
+def set_param(param, n, default):
     if param is None:
-        return np.ones(N) * default
+        return np.ones(n) * default
     elif isinstance(param, (float, int)):
-        return np.ones(N) * param
+        return np.ones(n) * param
     else:
         return param
