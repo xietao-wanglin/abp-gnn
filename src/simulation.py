@@ -7,6 +7,7 @@ from tqdm import tqdm
 from scipy.optimize import root
 from time import time
 
+
 class Simulation:
     def __init__(
         self,
@@ -34,7 +35,7 @@ class Simulation:
         self.rot_rate = set_param(rot_rate, self.n, 1)
         self.rot_couple = set_param(rot_couple, self.n, 0.1)
         self.couple_radius = couple_radius
-        self.L_box = box_length
+        self.box_length = box_length
 
         self.timesteps = timesteps
         self.delta_t = delta_t
@@ -59,8 +60,8 @@ class Simulation:
         dx = x[:, None] - x[None, :]
         dy = y[:, None] - y[None, :]
         if self.periodic:
-            dx = dx - self.L_box * np.round(dx / self.L_box)
-            dy = dy - self.L_box * np.round(dy / self.L_box)
+            dx = dx - self.box_length * np.round(dx / self.box_length)
+            dy = dy - self.box_length * np.round(dy / self.box_length)
         distances = np.sqrt(dx**2 + dy**2)
 
         neighbor_mask = (distances < self.couple_radius) & (distances > 0)
@@ -75,13 +76,16 @@ class Simulation:
 
     def apply_periodic_boundary(self, positions):
         positions = positions.copy()
-        positions[::3] = positions[::3] % self.L_box
-        positions[1::3] = positions[1::3] % self.L_box
+        positions[::3] = positions[::3] % self.box_length
+        positions[1::3] = positions[1::3] % self.box_length
         positions[2::3] = positions[2::3] % (2 * np.pi)
         return positions
 
     def solve_dynamics(
-        self, method: Optional[str] = "RK45", max_time: Optional[float] = 1, debug: Optional[bool] = False,
+        self,
+        method: Optional[str] = "RK45",
+        max_time: Optional[float] = 1,
+        debug: Optional[bool] = False,
     ):
         if debug:
             start = time()
@@ -150,7 +154,8 @@ class Simulation:
             self.positions = (sol.y).T.reshape(-1, self.n, 3).transpose((0, 2, 1))
         if debug:
             end = time()
-            print(f"Time elapsed: {end-start:.2f} seconds")
+            print(f"Time elapsed: {end - start:.2f} seconds")
+
     def create_animation(
         self,
         timesteps: Optional[int] = None,
@@ -160,8 +165,8 @@ class Simulation:
         times, positions = self.get_solution()
         f = plt.figure(figsize=(6, 5))
         ax = f.add_subplot(111)
-        ax.set_xlim(0 - axis_offset, self.L_box + axis_offset)
-        ax.set_ylim(0 - axis_offset, self.L_box + axis_offset)
+        ax.set_xlim(0 - axis_offset, self.box_length + axis_offset)
+        ax.set_ylim(0 - axis_offset, self.box_length + axis_offset)
         ax.set_xlabel(r"$x$")
         ax.set_ylabel(r"$y$")
         ax.set_title(r"Time: 0.0")
@@ -181,6 +186,7 @@ class Simulation:
             points.set_array(positions[fn][2])
 
             f.canvas.draw_idle()
+
         if timesteps is None:
             timesteps = self.timesteps
         animation = FuncAnimation(f, update, interval=50, frames=timesteps)
@@ -269,8 +275,8 @@ class LennardJonesSimulation(Simulation):
         dx = x[:, None] - x[None, :]
         dy = y[:, None] - y[None, :]
 
-        dx = dx - self.L_box * np.round(dx / self.L_box)
-        dy = dy - self.L_box * np.round(dy / self.L_box)
+        dx = dx - self.box_length * np.round(dx / self.box_length)
+        dy = dy - self.box_length * np.round(dy / self.box_length)
         distances = np.sqrt(dx**2 + dy**2)
 
         neighbor_mask = (distances < self.couple_radius) & (distances > 0)
@@ -353,8 +359,8 @@ class RepulsiveSimulation(Simulation):
         dx = x[:, None] - x[None, :]
         dy = y[:, None] - y[None, :]
 
-        dx = dx - self.L_box * np.round(dx / self.L_box)
-        dy = dy - self.L_box * np.round(dy / self.L_box)
+        dx = dx - self.box_length * np.round(dx / self.box_length)
+        dy = dy - self.box_length * np.round(dy / self.box_length)
         distances = np.sqrt(dx**2 + dy**2)
 
         neighbor_mask = (distances < self.couple_radius) & (distances > 0)
@@ -439,8 +445,8 @@ class WCASimulation(Simulation):
         dx = x[:, None] - x[None, :]
         dy = y[:, None] - y[None, :]
 
-        dx = dx - self.L_box * np.round(dx / self.L_box)
-        dy = dy - self.L_box * np.round(dy / self.L_box)
+        dx = dx - self.box_length * np.round(dx / self.box_length)
+        dy = dy - self.box_length * np.round(dy / self.box_length)
         distances = np.sqrt(dx**2 + dy**2)
 
         neighbor_mask = (distances < self.couple_radius) & (distances > 0)
@@ -524,8 +530,8 @@ class SoftRepulsionSimulation(Simulation):
         dx = x[:, None] - x[None, :]
         dy = y[:, None] - y[None, :]
 
-        dx = dx - self.L_box * np.round(dx / self.L_box)
-        dy = dy - self.L_box * np.round(dy / self.L_box)
+        dx = dx - self.box_length * np.round(dx / self.box_length)
+        dy = dy - self.box_length * np.round(dy / self.box_length)
         distances = np.sqrt(dx**2 + dy**2)
 
         neighbor_mask = (distances < self.couple_radius) & (distances > 0)

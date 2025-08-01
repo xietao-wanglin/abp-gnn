@@ -1,7 +1,9 @@
 from src.simulation import RepulsiveSimulation
 
 import numpy as np
+
 np.random.seed(0)
+
 
 def generate_state(n, n_passive, box_length=1.0):
     rot_rate = np.ones(n)
@@ -19,14 +21,17 @@ def generate_state(n, n_passive, box_length=1.0):
 
     return rot_rate, v0, rot_couple, initial_state
 
+
 def load_from_file(filepath):
     pos = np.load(filepath)
     return pos[0]
 
-if __name__ == "__main__":
 
+if __name__ == "__main__":
     box_length = 1.0
-    rot_rate, v0, rot_couple, initial_state = generate_state(n=100, n_passive=30, box_length=box_length)
+    rot_rate, v0, rot_couple, initial_state = generate_state(
+        n=100, n_passive=30, box_length=box_length
+    )
     sim = RepulsiveSimulation(
         initial_state=initial_state,
         v0=v0,
