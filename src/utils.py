@@ -31,6 +31,7 @@ def apply_periodic_boundary(
 
 def discrete_simulation(
     simulation_list: List,
+    particle_type_list: Optional[List] = None,
     subset: Optional[bool] = False,
     subset_samples: Optional[List] = None,
     n_samples: Optional[int] = 4,
@@ -38,7 +39,6 @@ def discrete_simulation(
     p: Optional[int] = 0.1,
     use_distance: Optional[bool] = False,
     use_relative_encoding: Optional[bool] = False,
-    extended_data: Optional[bool] = False,
     dtype: Optional[torch.dtype] = torch.float,
     device: Optional[str | torch.device] = "cpu",
 ) -> List:
@@ -49,7 +49,7 @@ def discrete_simulation(
     Parameters
     ----------
     simulation_list: List
-        List of simulation arrays, each of shape (timesteps, 3, N) where N can vary between simulations.
+        List of simulation arrays, each of shape (timesteps, 3, N).
     subset: bool, optional
         If True, selects `n_samples` random timesteps instead of all.
     subset_samples: List, optional
@@ -60,7 +60,7 @@ def discrete_simulation(
         Method used to create edges in graph, either 'radius' or 'knn', default is 'radius'.
     p: float or int, optional
         Parameter of `cluster_method`, default is 0.1.
-    dtype : torch.dtype
+    dtype: torch.dtype
         Data type for conversion, default is torch.float.
     device: str or torch.device, optional
         Either 'cpu', 'cuda' or torch.device instance, default is 'cpu'.
@@ -68,12 +68,18 @@ def discrete_simulation(
     Returns
     -------
     data_pairs: List
-        [(x1, y1, edge_index1, edge_attr1), (x2, y2, edge_index2, edge_attr2), ...]
-        where each x and y represents one timestep pair from any simulation.
     """
     data_pairs = []
 
-    for sim in simulation_list:
+    for idx in range(len(simulation_list)):
+        sim = simulation_list[idx]
+        if particle_type_list is not None:
+            particle_type = particle_type_list[idx]
+            if not torch.is_tensor(particle_type):
+                particle_type = torch.tensor(particle_type, dtype=torch.int, device=device)
+        else:
+            particle_type = None
+        
         if not torch.is_tensor(sim):
             sim = torch.tensor(sim, dtype=dtype)
 
@@ -92,11 +98,9 @@ def discrete_simulation(
 
         for t in timesteps:
             x = sim[t]
-            y = sim[t + 1][:3]
+            y = sim[t + 1]
 
-            x_bounded = apply_periodic_boundary(
-                x[:3]
-            )  # Ensure [0, 1] x [0, 1] x [0, 2pi]
+            x_bounded = apply_periodic_boundary(x)  # Ensure [0, 1] x [0, 1] x [0, 2pi]
 
             edge_index, edge_attr = compute_graph(
                 x_bounded,
@@ -114,28 +118,19 @@ def discrete_simulation(
                     y=label,
                     edge_index=edge_index.to(device),
                     edge_attr=edge_attr.to(device).to(dtype=dtype),
-                    trajectory=apply_periodic_boundary(sim[t + 1 : t + 20, :3]),
+                    trajectory=apply_periodic_boundary(sim[t + 1 : t + 20]),
                     full_x=x_bounded.T.to(device).to(dtype=dtype),
+                    particle_type=particle_type,
                 )
 
-            if extended_data:
-                x[2] = x[2] % (2 * torch.pi)
-                data = Data(
-                    x=x[2:].T.to(device).to(dtype=dtype),
-                    y=label,
-                    edge_index=edge_index.to(device),
-                    edge_attr=edge_attr.to(device).to(dtype=dtype),
-                    trajectory=apply_periodic_boundary(sim[t + 1 : t + 20, :3]),
-                    full_x=x_bounded.T.to(device).to(dtype=dtype),
-                    particle_feats=x[3:].T.to(device).to(dtype=dtype),
-                )
-            if not extended_data and not use_relative_encoding:
+            else:
                 data = Data(
                     x=x_bounded.T.to(device),
                     y=label,
                     edge_index=edge_index.to(device),
                     edge_attr=edge_attr.to(device),
                     trajectory=apply_periodic_boundary(sim[t + 1 : t + 20, :3]),
+                    particle_type=particle_type,
                 ).to(dtype=dtype)
 
             data_pairs.append(data)

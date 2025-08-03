@@ -2,16 +2,13 @@ from src.simulation import RepulsiveSimulation
 
 import numpy as np
 
-np.random.seed(0)
-
-
 def generate_state(n, n_passive, n_boundary, box_length=1.0):
     rot_rate = np.ones(n)
     rot_rate[:n_passive] = np.zeros(n_passive)
     v0 = np.ones(n) * 0.1
     v0[:n_passive] = np.zeros(n_passive)
     rot_couple = np.zeros(n)
-    particle_type = np.ones(n)
+    particle_type = np.ones(n, dtype=int)
     particle_type[:n_boundary] = 0
 
     initial_state = np.random.random(3 * n)
@@ -49,14 +46,17 @@ def load_from_file(filepath):
 
 
 if __name__ == "__main__":
-    box_length = 1.0
+    np.random.seed(893)
+    n = np.random.randint(60, 120)
+    n_boundary = np.random.randint(1, n/2)
+    box_length = 1
     rot_rate, v0, rot_couple, particle_type, initial_state = generate_state(
-        n=100, n_passive=0, n_boundary=80, box_length=box_length
+        n=n, n_passive=0, n_boundary=n_boundary, box_length=box_length
     )
 
-    rot_rate, v0, rot_couple, particle_type, initial_state = chevron(
-        n=80, n_boundary=30, box_length=box_length
-    )
+    # rot_rate, v0, rot_couple, particle_type, initial_state = chevron(
+    #    n=80, n_boundary=30, box_length=box_length
+    # )
 
     sim = RepulsiveSimulation(
         initial_state=initial_state,

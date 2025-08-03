@@ -165,7 +165,7 @@ class GNS_Layer(MessagePassing):
 
         edge_attr_new = self.edge_mlp(edge_features)
 
-        x_new = self.propagate(edge_index, x=x, edge_attr=edge_attr, batch=batch)
+        x_new = self.propagate(edge_index, x=x, edge_attr=edge_attr_new, batch=batch)
 
         return x_new, edge_attr_new
 
@@ -250,6 +250,99 @@ class GNS(nn.Module):
             data.edge_attr,
             data.batch,
         )
+
+        x = self.node_encoder(x)
+        edge_attr = self.edge_encoder(edge_attr)
+
+        for layer in self.layers:
+            x_new, edge_attr_new = layer(x, edge_index, edge_attr, batch)
+            x = x + x_new
+            edge_attr = edge_attr + edge_attr_new
+
+        x = self.decoder(x)
+
+        return x
+
+
+class GNSPlus(nn.Module):
+    def __init__(
+        self,
+        n_layers,
+        in_node_nf,
+        out_node_nf,
+        in_edge_nf,
+        hidden_nf,
+        activation=nn.SiLU(),
+        device="cpu",
+        dropout=0.0,
+        norm=True,
+        num_particle_types=1,
+        particle_type_embedding_size=16,
+    ):
+        super(GNSPlus, self).__init__()
+
+        self.name = "GNSPlus"
+
+        self.n_layers = n_layers
+        self.in_node_nf = in_node_nf
+        self.out_node_nf = out_node_nf
+        self.in_edge_nf = in_edge_nf
+        self.hidden_nf = hidden_nf
+        self.activation = activation
+        self.dropout = dropout
+        self.norm = norm
+
+        if num_particle_types > 1:
+            self.particle_embedding = nn.Embedding(
+                num_particle_types, particle_type_embedding_size
+            )
+            node_input_size = in_node_nf + particle_type_embedding_size
+        else:
+            self.particle_embedding = None
+            node_input_size = in_node_nf
+
+        self.node_encoder = nn.Sequential(
+            nn.Linear(node_input_size, hidden_nf),
+            activation,
+            nn.Linear(hidden_nf, hidden_nf),
+            activation,
+        )
+
+        self.edge_encoder = nn.Sequential(
+            nn.Linear(in_edge_nf, hidden_nf),
+            activation,
+            nn.Linear(hidden_nf, hidden_nf),
+            activation,
+        )
+
+        self.layers = nn.ModuleList()
+
+        for _ in range(self.n_layers):
+            self.layers.append(
+                GNS_Layer(hidden_nf, hidden_nf, activation, dropout, norm)
+            )
+
+        self.decoder = nn.Sequential(
+            nn.Linear(hidden_nf, hidden_nf),
+            activation,
+            nn.Linear(hidden_nf, hidden_nf),
+            activation,
+            nn.Linear(hidden_nf, out_node_nf),
+        )
+
+        self.to(device)
+
+    def forward(self, data, particle_types=None):
+        x, edge_index, edge_attr, batch = (
+            data.x,
+            data.edge_index,
+            data.edge_attr,
+            data.batch,
+        )
+
+        if self.particle_embedding is not None and particle_types is not None:
+            type_embeddings = self.particle_embedding(particle_types)
+            x = torch.cat([x, type_embeddings], dim=-1)
 
         x = self.node_encoder(x)
         edge_attr = self.edge_encoder(edge_attr)
