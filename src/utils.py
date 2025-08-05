@@ -127,13 +127,14 @@ def discrete_simulation(
 
             else:
                 data = Data(
-                    x=x_bounded.T.to(device),
+                    x=x_bounded.T.to(device).to(dtype=dtype),
                     y=label,
                     edge_index=edge_index.to(device),
-                    edge_attr=edge_attr.to(device),
+                    edge_attr=edge_attr.to(device).to(dtype=dtype),
                     trajectory=apply_periodic_boundary(sim[t + 1 : t + 20, :3]),
+                    full_x=x_bounded.T.to(device).to(dtype=dtype),
                     particle_type=particle_type,
-                ).to(dtype=dtype)
+                )
 
             data_pairs.append(data)
 

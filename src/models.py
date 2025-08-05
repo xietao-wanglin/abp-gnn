@@ -262,6 +262,85 @@ class GNS(nn.Module):
         x = self.decoder(x)
 
         return x
+    
+class AbsoluteGNS(nn.Module):
+    def __init__(
+        self,
+        n_layers,
+        in_node_nf,
+        out_node_nf,
+        hidden_nf,
+        activation=nn.SiLU(),
+        device="cpu",
+        dropout=0.0,
+        norm=True,
+    ):
+        super(AbsoluteGNS, self).__init__()
+
+        self.name = "AbsoluteGNS"
+
+        self.n_layers = n_layers
+        self.in_node_nf = in_node_nf
+        self.out_node_nf = out_node_nf
+        self.hidden_nf = hidden_nf
+        self.activation = activation
+        self.dropout = dropout
+        self.norm = norm
+
+        self.node_encoder = nn.Sequential(
+            nn.Linear(in_node_nf, hidden_nf),
+            activation,
+            nn.Linear(hidden_nf, hidden_nf),
+            activation,
+        )
+
+        self.edge_encoder = nn.Sequential(
+            nn.Linear(hidden_nf, hidden_nf),
+            activation,
+            nn.Linear(hidden_nf, hidden_nf),
+            activation,
+        )
+
+        self.edge_bias = nn.Parameter(torch.randn(hidden_nf))
+
+        self.layers = nn.ModuleList()
+
+        for _ in range(self.n_layers):
+            self.layers.append(
+                GNS_Layer(hidden_nf, hidden_nf, activation, dropout, norm)
+            )
+
+        self.decoder = nn.Sequential(
+            nn.Linear(hidden_nf, hidden_nf),
+            activation,
+            nn.Linear(hidden_nf, hidden_nf),
+            activation,
+            nn.Linear(hidden_nf, out_node_nf),
+        )
+
+        self.to(device)
+
+    def forward(self, data):
+        x, edge_index, edge_attr, batch = (
+            data.x,
+            data.edge_index,
+            data.edge_attr,
+            data.batch,
+        )
+
+        x = self.node_encoder(x)
+        num_edges = edge_attr.shape[0]
+        bias_input = self.edge_bias.expand(num_edges, -1)
+        edge_attr = self.edge_encoder(bias_input)
+
+        for layer in self.layers:
+            x_new, edge_attr_new = layer(x, edge_index, edge_attr, batch)
+            x = x + x_new
+            edge_attr = edge_attr + edge_attr_new
+
+        x = self.decoder(x)
+
+        return x
 
 
 class GNSPlus(nn.Module):
