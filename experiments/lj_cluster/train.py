@@ -1,4 +1,4 @@
-from src.models import GNSPlus
+from src.models import GNS
 from src.utils import (
     discrete_simulation,
     ParticleDataset,
@@ -100,19 +100,8 @@ def train(
     train_simulations = [np.load(sim) for sim in train_glob]
     test_simulations = [np.load(sim) for sim in test_glob]
 
-    particle_type_train_glob = sorted(glob(f"{script_dir}/data/particle_train_*"))
-    particle_type_test_glob = sorted(glob(f"{script_dir}/data/particle_test_*"))
-
-    train_particle_type = [
-        np.load(particle_type) for particle_type in particle_type_train_glob
-    ]
-    test_particle_type = [
-        np.load(particle_type) for particle_type in particle_type_test_glob
-    ]
-
     data_pairs_train = discrete_simulation(
         train_simulations,
-        particle_type_list=train_particle_type,
         subset=subset,
         subset_samples=subset_samples,
         cluster_method=cluster_method,
@@ -124,7 +113,6 @@ def train(
     )
     data_pairs_test = discrete_simulation(
         test_simulations,
-        particle_type_list=test_particle_type,
         subset=subset,
         subset_samples=subset_samples,
         cluster_method=cluster_method,
@@ -180,7 +168,7 @@ def train(
         "train_samples": len(train_glob),
         "test_samples": len(test_glob),
     }
-    wandb.init(project="ABP_GNN", name="boundaries", config=train_details)
+    wandb.init(project="ABP_GNN", name="lj_cluster", config=train_details)
 
     details_path = os.path.join(checkpoint_dir, "details.json")
     with open(details_path, "w") as f:
@@ -214,8 +202,7 @@ def train(
         for batch_idx, batch in enumerate(pbar):
             batch = batch.to(device)
             y = batch.y
-            particle_type = batch.particle_type
-            pred = model(batch, particle_type)
+            pred = model(batch)
             loss = criterion(pred, y).mean()
             metric_train = metric(pred, y).mean()
             optimizer.zero_grad()
@@ -245,8 +232,7 @@ def train(
             for batch in val_loader:
                 batch = batch.to(device)
                 y = batch.y
-                particle_type = batch.particle_type
-                pred = model(batch, particle_type)
+                pred = model(batch)
                 loss = criterion(pred, y).mean()
                 metric_val = metric(pred, y).mean()
                 if (epoch + 1) % checkpoint_every == 0:
@@ -270,7 +256,7 @@ def train(
                             edge_index=edge_index,
                             edge_attr=edge_attr,
                         )
-                        pred = model(data, particle_type)
+                        pred = model(data)
                         rollout[roll + 1] = apply_periodic_boundary(
                             (pred + rollout[roll].T).T
                         )
@@ -389,7 +375,7 @@ def train(
 
 if __name__ == "__main__":
     model = (
-        GNSPlus(
+        GNS(
             n_layers=10,
             in_node_nf=1,
             out_node_nf=3,
@@ -398,8 +384,6 @@ if __name__ == "__main__":
             device=device,
             norm=False,
             activation=nn.SiLU(),
-            num_particle_types=2,
-            particle_type_embedding_size=16,
         )
         .to(dtype=dtype)
         .to(device=device)

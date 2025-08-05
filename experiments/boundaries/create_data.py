@@ -33,7 +33,7 @@ if __name__ == "__main__":
     for i in tqdm(range(train_init, train_sims + train_init), desc="Training Set"):
         np.random.seed(i)
         n = np.random.randint(60, 120)
-        n_boundary = np.random.randint(1, n/2)
+        n_boundary = np.random.randint(1, n / 2)
         box_length = 1
         rot_rate, v0, rot_couple, particle_type, initial_state = generate_state(
             n=n, n_passive=0, n_boundary=n_boundary, box_length=box_length
@@ -60,7 +60,7 @@ if __name__ == "__main__":
     for i in tqdm(range(test_init, test_sims + test_init), desc="Test Set"):
         np.random.seed(98743 * i + 4500)
         n = np.random.randint(60, 120)
-        n_boundary = np.random.randint(1, n/2)
+        n_boundary = np.random.randint(1, n / 2)
         box_length = 1
         rot_rate, v0, rot_couple, particle_type, initial_state = generate_state(
             n=n, n_passive=0, n_boundary=n_boundary, box_length=box_length
@@ -87,7 +87,7 @@ if __name__ == "__main__":
     for i in tqdm(range(4), desc="Long Test Set"):
         np.random.seed(983 * i + 2000)
         n = np.random.randint(60, 120)
-        n_boundary = np.random.randint(1, n/2)
+        n_boundary = np.random.randint(1, n / 2)
         box_length = 1
         rot_rate, v0, rot_couple, particle_type, initial_state = generate_state(
             n=n, n_passive=0, n_boundary=n_boundary, box_length=box_length
@@ -109,4 +109,6 @@ if __name__ == "__main__":
         sim.solve_dynamics(method="RK45")
         _times, loc = sim.get_solution_abs()
         np.save(f"./experiments/boundaries/data/test_{i}.npy", loc)
-        np.save(f"./experiments/boundaries/data/particle_test_test_{i}.npy", particle_type)
+        np.save(
+            f"./experiments/boundaries/data/particle_test_test_{i}.npy", particle_type
+        )

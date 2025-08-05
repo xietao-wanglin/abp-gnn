@@ -2,7 +2,7 @@ import numpy as np
 from scipy.integrate import solve_ivp
 import matplotlib.pyplot as plt
 from matplotlib.animation import FuncAnimation
-from typing import Optional
+from typing import Optional, Tuple
 from tqdm import tqdm
 from scipy.optimize import root
 from time import time
@@ -171,13 +171,20 @@ class Simulation:
         self,
         timesteps: Optional[int] = None,
         filename: Optional[str] = None,
-        axis_offset: Optional[float] = 0.0,
+        xlim: Optional[Tuple] = None,
+        ylim: Optional[Tuple] = None,
     ):
         times, positions = self.get_solution()
         f = plt.figure(figsize=(6, 5))
         ax = f.add_subplot(111)
-        ax.set_xlim(0 - axis_offset, self.box_length + axis_offset)
-        ax.set_ylim(0 - axis_offset, self.box_length + axis_offset)
+        if xlim is not None:
+            ax.set_xlim(xlim[0], xlim[1])
+        else:
+            ax.set_xlim(0, self.box_length)
+        if ylim is not None:
+            ax.set_ylim(ylim[0], ylim[1])
+        else:
+            ax.set_ylim(0, self.box_length)
         ax.set_xlabel(r"$x$")
         ax.set_ylabel(r"$y$")
         ax.set_title(r"Time: 0.0")
@@ -306,10 +313,10 @@ class LennardJonesSimulation(Simulation):
         dydt += Fy_total
 
         dthetadt = self.rot_rate + self.rot_couple * interaction
-        derivative = np.vstack([dxdt, dydt, dthetadt])
         dxdt *= boundary_mask
         dydt *= boundary_mask
         dthetadt *= boundary_mask
+        derivative = np.vstack([dxdt, dydt, dthetadt])
         return derivative.T.reshape(3 * self.n)
 
 

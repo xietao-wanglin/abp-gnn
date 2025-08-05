@@ -76,10 +76,12 @@ def discrete_simulation(
         if particle_type_list is not None:
             particle_type = particle_type_list[idx]
             if not torch.is_tensor(particle_type):
-                particle_type = torch.tensor(particle_type, dtype=torch.int, device=device)
+                particle_type = torch.tensor(
+                    particle_type, dtype=torch.int, device=device
+                )
         else:
             particle_type = None
-        
+
         if not torch.is_tensor(sim):
             sim = torch.tensor(sim, dtype=dtype)
 
