@@ -262,7 +262,8 @@ class GNS(nn.Module):
         x = self.decoder(x)
 
         return x
-    
+
+
 class AbsoluteGNS(nn.Module):
     def __init__(
         self,
