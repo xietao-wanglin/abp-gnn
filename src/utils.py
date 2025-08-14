@@ -39,6 +39,8 @@ def discrete_simulation(
     p: Optional[int] = 0.1,
     use_distance: Optional[bool] = False,
     use_relative_encoding: Optional[bool] = False,
+    egnn: Optional[bool] = False,
+    gnn: Optional[bool] = False,
     dtype: Optional[torch.dtype] = torch.float,
     device: Optional[str | torch.device] = "cpu",
 ) -> List:
@@ -135,6 +137,30 @@ def discrete_simulation(
                     full_x=x_bounded.T.to(device).to(dtype=dtype),
                     particle_type=particle_type,
                 )
+            
+            if egnn:
+                data = Data(
+                    x=x_bounded[2].unsqueeze(0).T.to(device).to(dtype=dtype),
+                    pos=x_bounded[:2].T.to(device).to(dtype=dtype),
+                    y=y,
+                    edge_index=edge_index.to(device),
+                    edge_attr=edge_attr.to(device).to(dtype=dtype),
+                    trajectory=apply_periodic_boundary(sim[t + 1 : t + 20, :3]),
+                    full_x=x_bounded.T.to(device).to(dtype=dtype),
+                    particle_type=particle_type,
+                )
+            
+            if gnn:
+                data = Data(
+                    x=x_bounded.T.to(device).to(dtype=dtype),
+                    y=y,
+                    edge_index=edge_index.to(device),
+                    edge_attr=edge_attr.to(device).to(dtype=dtype),
+                    trajectory=apply_periodic_boundary(sim[t + 1 : t + 20, :3]),
+                    full_x=x_bounded.T.to(device).to(dtype=dtype),
+                    particle_type=particle_type,
+                )
+
 
             data_pairs.append(data)
 
