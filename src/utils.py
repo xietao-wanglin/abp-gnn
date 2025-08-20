@@ -1,7 +1,7 @@
 import torch
 from torch_geometric.data import Dataset, Data
 
-from typing import Optional, List, Tuple
+from typing import Optional, List, Tuple, Dict
 
 
 def apply_periodic_boundary(
@@ -41,6 +41,7 @@ def discrete_simulation(
     use_relative_encoding: Optional[bool] = False,
     egnn: Optional[bool] = False,
     gnn: Optional[bool] = False,
+    stats: Optional[Dict] = None,
     dtype: Optional[torch.dtype] = torch.float,
     device: Optional[str | torch.device] = "cpu",
 ) -> List:
@@ -114,7 +115,12 @@ def discrete_simulation(
                 use_relative_encoding=use_relative_encoding,
                 device=device,
             )
-            label = (y - x_bounded).T.to(device).to(dtype=dtype)
+            if stats is not None:
+                vel = y - x_bounded
+                vel[:2] = (vel[:2] - stats["vel_mean"]) / stats["vel_std"]
+                label = vel[:2].T.to(device).to(dtype=dtype)
+            else:
+                label = (y - x_bounded).T.to(device).to(dtype=dtype)
 
             if use_relative_encoding:
                 data = Data(
@@ -137,23 +143,12 @@ def discrete_simulation(
                     full_x=x_bounded.T.to(device).to(dtype=dtype),
                     particle_type=particle_type,
                 )
-            
+
             if egnn:
                 data = Data(
                     x=x_bounded[2].unsqueeze(0).T.to(device).to(dtype=dtype),
                     pos=x_bounded[:2].T.to(device).to(dtype=dtype),
-                    y=y,
-                    edge_index=edge_index.to(device),
-                    edge_attr=edge_attr.to(device).to(dtype=dtype),
-                    trajectory=apply_periodic_boundary(sim[t + 1 : t + 20, :3]),
-                    full_x=x_bounded.T.to(device).to(dtype=dtype),
-                    particle_type=particle_type,
-                )
-            
-            if gnn:
-                data = Data(
-                    x=x_bounded.T.to(device).to(dtype=dtype),
-                    y=y,
+                    y=y.T.to(device).to(dtype=dtype),
                     edge_index=edge_index.to(device),
                     edge_attr=edge_attr.to(device).to(dtype=dtype),
                     trajectory=apply_periodic_boundary(sim[t + 1 : t + 20, :3]),
@@ -161,6 +156,16 @@ def discrete_simulation(
                     particle_type=particle_type,
                 )
 
+            if gnn:
+                data = Data(
+                    x=x_bounded.T.to(device).to(dtype=dtype),
+                    y=y.T.to(device).to(dtype=dtype),
+                    edge_index=edge_index.to(device),
+                    edge_attr=edge_attr.to(device).to(dtype=dtype),
+                    trajectory=apply_periodic_boundary(sim[t + 1 : t + 20, :3]),
+                    full_x=x_bounded.T.to(device).to(dtype=dtype),
+                    particle_type=particle_type,
+                )
 
             data_pairs.append(data)
 

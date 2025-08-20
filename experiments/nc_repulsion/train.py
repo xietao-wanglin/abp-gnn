@@ -376,11 +376,11 @@ def train(
 if __name__ == "__main__":
     model = (
         GNS(
-            n_layers=10,
+            n_layers=4,
             in_node_nf=1,
             out_node_nf=3,
             in_edge_nf=3,
-            hidden_nf=128,
+            hidden_nf=64,
             device=device,
             norm=False,
             activation=nn.SiLU(),

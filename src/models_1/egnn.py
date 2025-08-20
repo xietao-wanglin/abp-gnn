@@ -240,5 +240,5 @@ if __name__ == "__main__":
 
     with torch.no_grad():
         node_outputs, updated_coords = model(batch_data)
-    
+
     print(f"Shapes -- Node: {node_outputs.shape}, coords: {updated_coords.shape}")

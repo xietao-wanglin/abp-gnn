@@ -242,9 +242,7 @@ def train(
                 if (epoch + 1) % checkpoint_every == 0:
                     gt_trajectory = batch.trajectory
                     rollout = torch.zeros_like(gt_trajectory)
-                    rollout[0] = apply_periodic_boundary(
-                        (pred).T
-                    )  # Rollout manually
+                    rollout[0] = apply_periodic_boundary((pred).T)  # Rollout manually
                     for roll in range(18):
                         x = rollout[roll]
                         edge_index, edge_attr = compute_graph(
@@ -263,9 +261,7 @@ def train(
                         )
                         x, coord = model(data)
                         pred = torch.cat([coord, x], dim=-1)
-                        rollout[roll + 1] = apply_periodic_boundary(
-                            (pred).T
-                        )
+                        rollout[roll + 1] = apply_periodic_boundary((pred).T)
                     mse_trajectory = (rollout - gt_trajectory).pow(2)
                     mse_1.append(mse_trajectory[0].mean().item())
                     mse_5.append(mse_trajectory[:5].mean().item())

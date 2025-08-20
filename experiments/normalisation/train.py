@@ -37,14 +37,15 @@ def train(
     model: nn.Module,
     cluster_method: str,
     cluster_parameter: float | int,
-    batch_size: Optional[int] = 32,
-    n_epochs: Optional[int] = 100,
-    lr: Optional[float] = 5e-4,
-    weight_decay: Optional[float] = 1e-4,
+    batch_size: Optional[int] = 1,
+    n_epochs: Optional[int] = 10000,
+    lr: Optional[float] = 1e-4,
+    weight_decay: Optional[float] = 1e-8,
     device: Optional[str | torch.device] = "cpu",
     checkpoint_dir: Optional[str] = "checkpoints",
-    checkpoint_every: Optional[int] = 2,
+    checkpoint_every: Optional[int] = 200,
     hist_filename: Optional[str] = "training_history",
+    dataset: Optional[str] = "chiral_repulsion",
     subset: Optional[bool] = False,
     subset_samples: Optional[List] = None,
     base_model_path: Optional[str] = None,
@@ -94,8 +95,10 @@ def train(
 
     os.makedirs(checkpoint_dir, exist_ok=True)
 
-    train_glob = sorted(glob(f"{script_dir}/data/simulation_train_*"))
-    test_glob = sorted(glob(f"{script_dir}/data/simulation_test_*"))
+    train_glob = sorted(glob(f"{script_dir}/../../datasets/{dataset}/data/simulation_train_*"))
+    test_glob = sorted(glob(f"{script_dir}/../../datasets/{dataset}/data/simulation_test_*"))
+    with open(f"{script_dir}/../../datasets/chiral_repulsion/metadata.json") as f:
+        metadata = json.load(f)
 
     train_simulations = [np.load(sim) for sim in train_glob]
     test_simulations = [np.load(sim) for sim in test_glob]
@@ -106,9 +109,10 @@ def train(
         subset_samples=subset_samples,
         cluster_method=cluster_method,
         p=cluster_parameter,
-        use_distance=True,
+        use_distance=False,
         use_relative_encoding=False,
-        gnn=True,
+        gnn=False,
+        stats=metadata,
         dtype=dtype,
         device=device,
     )
@@ -118,9 +122,10 @@ def train(
         subset_samples=subset_samples,
         cluster_method=cluster_method,
         p=cluster_parameter,
-        use_distance=True,
+        use_distance=False,
         use_relative_encoding=False,
-        gnn=True,
+        gnn=False,
+        stats=metadata,
         dtype=dtype,
         device=device,
     )
@@ -170,7 +175,7 @@ def train(
         "train_samples": len(train_glob),
         "test_samples": len(test_glob),
     }
-    wandb.init(project="ABP_GNN", name="nc_repulsion_gnn", config=train_details)
+    wandb.init(project="ABP_GNN", name="normalisation", config=train_details)
 
     details_path = os.path.join(checkpoint_dir, "details.json")
     with open(details_path, "w") as f:
@@ -205,15 +210,15 @@ def train(
             batch = batch.to(device)
             y = batch.y
             pred = model(batch)
-            loss = criterion(pred.T, y).mean()
-            metric_train = metric(pred.T, y).mean()
+            loss = criterion(pred, y).mean()
+            metric_train = metric(pred, y).mean()
             optimizer.zero_grad()
             loss.backward()
             optimizer.step()
             wandb.log(
                 {
-                    "train_batch_loss": loss.item(),
-                    "train_batch_metric": metric_train.item(),
+                    "train/batch_loss": loss.item(),
+                    "train/batch_metric": metric_train.item(),
                     "epoch": epoch,
                 }
             )
@@ -235,19 +240,24 @@ def train(
                 batch = batch.to(device)
                 y = batch.y
                 pred = model(batch)
-                loss = criterion(pred.T, y).mean()
-                metric_val = metric(pred.T, y).mean()
+                loss = criterion(pred, y).mean()
+                metric_val = metric(pred, y).mean()
                 if (epoch + 1) % checkpoint_every == 0:
                     gt_trajectory = batch.trajectory
                     rollout = torch.zeros_like(gt_trajectory)
-                    rollout[0] = apply_periodic_boundary((pred).T)  # Rollout manually
+                    vel_pred = pred * metadata["vel_std"] + metadata["vel_mean"]
+                    theta_pred = torch.ones(pred.shape[0]).unsqueeze(1) * metadata["angular_mean"]
+                    pred = torch.cat([vel_pred, theta_pred], dim=-1)
+                    rollout[0] = apply_periodic_boundary(
+                        (pred + batch.full_x).T
+                    )  # Rollout manually
                     for roll in range(18):
                         x = rollout[roll]
                         edge_index, edge_attr = compute_graph(
                             x,
                             method="radius",
                             p=0.1,
-                            use_distance=True,
+                            use_distance=False,
                             use_relative_encoding=False,
                             box_length=1,
                         )
@@ -257,7 +267,12 @@ def train(
                             edge_attr=edge_attr,
                         )
                         pred = model(data)
-                        rollout[roll + 1] = apply_periodic_boundary((pred).T)
+                        vel_pred = pred * metadata["vel_std"] + metadata["vel_mean"]
+                        theta_pred = torch.ones(pred.shape[0]).unsqueeze(1) * metadata["angular_mean"]
+                        pred = torch.cat([vel_pred, theta_pred], dim=-1)
+                        rollout[roll + 1] = apply_periodic_boundary(
+                            (pred + rollout[roll].T).T
+                        )
                     mse_trajectory = (rollout - gt_trajectory).pow(2)
                     mse_1.append(mse_trajectory[0].mean().item())
                     mse_5.append(mse_trajectory[:5].mean().item())
@@ -267,10 +282,14 @@ def train(
                 val_metrics.append(metric_val.item())
 
         avg_train_loss = np.mean(train_losses)
+        std_train_loss = np.std(train_losses)
         avg_val_loss = np.mean(val_losses)
+        std_val_loss = np.std(val_losses)
 
         avg_train_metric = np.mean(train_metrics)
+        std_train_metric = np.std(train_metrics)
         avg_val_metric = np.mean(val_metrics)
+        std_val_metric = np.std(val_metrics)
 
         if (epoch + 1) % checkpoint_every == 0:
             avg_mse_1 = np.mean(mse_1)
@@ -284,29 +303,28 @@ def train(
         history["val_metric"].append(avg_val_metric)
         if scheduler is not None:
             scheduler.step()
+
+        wandb.log(
+            {
+                "epoch": epoch + 1,
+                "train/loss": avg_train_loss,
+                "train/std_loss": std_train_loss,
+                "train/metric": avg_train_metric,
+                "train/std_metric": std_train_metric,
+                "val/loss": avg_val_loss,
+                "val/std_loss": std_val_loss,
+                "val/metric": avg_val_metric,
+                "val/std_metric": std_val_metric,
+                "lr": scheduler.get_last_lr()[0] if scheduler else lr,
+            }
+        )
         if (epoch + 1) % checkpoint_every == 0:
             wandb.log(
                 {
-                    "epoch": epoch + 1,
-                    "train_loss": avg_train_loss,
-                    "train_metric": avg_train_metric,
-                    "val_loss": avg_val_loss,
-                    "val_metric": avg_val_metric,
-                    "mse_1": avg_mse_1,
-                    "mse_5": avg_mse_5,
-                    "mse_10": avg_mse_10,
-                    "mse_20": avg_mse_20,
-                    "lr": scheduler.get_last_lr()[0] if scheduler else lr,
-                }
-            )
-        else:
-            wandb.log(
-                {
-                    "epoch": epoch + 1,
-                    "train_loss": avg_train_loss,
-                    "train_metric": avg_train_metric,
-                    "val_loss": avg_val_loss,
-                    "val_metric": avg_val_metric,
+                    "val/mse_1": avg_mse_1,
+                    "val/mse_5": avg_mse_5,
+                    "val/mse_10": avg_mse_10,
+                    "val/mse_20": avg_mse_20,
                     "lr": scheduler.get_last_lr()[0] if scheduler else lr,
                 }
             )
@@ -365,8 +383,6 @@ def train(
                 indent=4,
             )
 
-        print(f"Training history saved to {history_path}")
-
     wandb.finish()
     return history
 
@@ -374,10 +390,10 @@ def train(
 if __name__ == "__main__":
     model = (
         GNN(
-            n_layers=5,
+            n_layers=4,
             in_node_nf=3,
-            out_node_nf=3,
-            in_edge_nf=1,
+            out_node_nf=2,
+            in_edge_nf=0,
             hidden_nf=64,
             device=device,
             norm=False,
