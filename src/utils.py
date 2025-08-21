@@ -38,9 +38,9 @@ def discrete_simulation(
     cluster_method: Optional[str] = "radius",
     p: Optional[int] = 0.1,
     use_distance: Optional[bool] = False,
-    use_relative_encoding: Optional[bool] = False,
-    egnn: Optional[bool] = False,
-    gnn: Optional[bool] = False,
+    use_rel_pos: Optional[bool] = False,
+    target_vel: Optional[bool] = True,
+    use_pos: Optional[bool] = False,
     stats: Optional[Dict] = None,
     dtype: Optional[torch.dtype] = torch.float,
     device: Optional[str | torch.device] = "cpu",
@@ -112,60 +112,34 @@ def discrete_simulation(
                 method=cluster_method,
                 p=p,
                 use_distance=use_distance,
-                use_relative_encoding=use_relative_encoding,
+                use_rel_pos=use_rel_pos,
                 device=device,
             )
-            if stats is not None:
-                vel = y - x_bounded
-                vel[:2] = (vel[:2] - stats["vel_mean"]) / stats["vel_std"]
-                label = vel[:2].T.to(device).to(dtype=dtype)
+            if target_vel:
+                if stats is not None:
+                    vel = y - x_bounded
+                    vel[:2] = (vel[:2] - stats["vel_mean"]) / stats["vel_std"]
+                    label = vel[:2].T.to(device).to(dtype=dtype)
+                else:
+                    label = (y - x_bounded).T.to(device).to(dtype=dtype)
             else:
-                label = (y - x_bounded).T.to(device).to(dtype=dtype)
+                label = y[:2].T
 
-            if use_relative_encoding:
-                data = Data(
-                    x=x_bounded[2].unsqueeze(0).T.to(device).to(dtype=dtype),
-                    y=label,
-                    edge_index=edge_index.to(device),
-                    edge_attr=edge_attr.to(device).to(dtype=dtype),
-                    trajectory=apply_periodic_boundary(sim[t + 1 : t + 20]),
-                    full_x=x_bounded.T.to(device).to(dtype=dtype),
-                    particle_type=particle_type,
-                )
-
+            if use_pos:
+                data_input = x_bounded.T.to(device).to(dtype=dtype)
             else:
-                data = Data(
-                    x=x_bounded.T.to(device).to(dtype=dtype),
-                    y=label,
-                    edge_index=edge_index.to(device),
-                    edge_attr=edge_attr.to(device).to(dtype=dtype),
-                    trajectory=apply_periodic_boundary(sim[t + 1 : t + 20, :3]),
-                    full_x=x_bounded.T.to(device).to(dtype=dtype),
-                    particle_type=particle_type,
-                )
+                data_input = x_bounded[2].unsqueeze(0).T.to(device).to(dtype=dtype)
 
-            if egnn:
-                data = Data(
-                    x=x_bounded[2].unsqueeze(0).T.to(device).to(dtype=dtype),
-                    pos=x_bounded[:2].T.to(device).to(dtype=dtype),
-                    y=y[:2].T.to(device).to(dtype=dtype),
-                    edge_index=edge_index.to(device),
-                    edge_attr=edge_attr.to(device).to(dtype=dtype),
-                    trajectory=apply_periodic_boundary(sim[t + 1 : t + 20, :3]),
-                    full_x=x_bounded.T.to(device).to(dtype=dtype),
-                    particle_type=particle_type,
-                )
-
-            if gnn:
-                data = Data(
-                    x=x_bounded.T.to(device).to(dtype=dtype),
-                    y=y.T.to(device).to(dtype=dtype),
-                    edge_index=edge_index.to(device),
-                    edge_attr=edge_attr.to(device).to(dtype=dtype),
-                    trajectory=apply_periodic_boundary(sim[t + 1 : t + 20, :3]),
-                    full_x=x_bounded.T.to(device).to(dtype=dtype),
-                    particle_type=particle_type,
-                )
+            data = Data(
+                x=data_input,
+                y=label,
+                edge_index=edge_index.to(device),
+                edge_attr=edge_attr.to(device).to(dtype=dtype),
+                pos=x_bounded[:2].T.to(device).to(dtype=dtype),
+                trajectory=apply_periodic_boundary(sim[t + 1 : t + 20]),
+                full_x=x_bounded.T.to(device).to(dtype=dtype),
+                particle_type=particle_type,
+            )
 
             data_pairs.append(data)
 
@@ -248,8 +222,8 @@ def compute_graph(
     x: torch.Tensor,
     method: str,
     p: float | int,
-    use_distance: bool,
-    use_relative_encoding: Optional[bool] = False,
+    use_distance: Optional[bool] = False,
+    use_rel_pos: Optional[bool] = False,
     box_length: Optional[float] = 1,
     device: Optional[str | torch.device] = "cpu",
 ) -> Tuple[torch.Tensor, torch.Tensor]:
@@ -309,24 +283,23 @@ def compute_graph(
         col_indices = indices.flatten()
         edge_index = torch.stack([row_indices, col_indices])
     else:
-        raise ValueError(
-            "Invalid method, must be either 'radius', 'knn', 'np_radius' or 'np_knn'."
-        )
+        raise ValueError("Invalid method, must be either 'radius' or 'knn'")
 
+    row, col = edge_index
+    rel_pos_raw = xy[row] - xy[col]
+    rel_pos = rel_pos_raw - box_length * torch.round(rel_pos_raw / box_length)
+    rel_dist = torch.sum(rel_pos**2, dim=-1, keepdim=True)
+
+    features = []
     if use_distance:
-        row, col = edge_index
-        rel_pos_raw = xy[row] - xy[col]
-        rel_pos = rel_pos_raw - torch.round(rel_pos_raw)
-        rel_dist = torch.sum(rel_pos**2, dim=-1, keepdim=True)
-        edge_attr = rel_dist
-    elif use_relative_encoding:
-        row, col = edge_index
-        rel_pos_raw = xy[row] - xy[col]
-        rel_pos = rel_pos_raw - box_length * torch.round(rel_pos_raw / box_length)
-        rel_dist = torch.norm(rel_pos, dim=-1, keepdim=True)
-        edge_attr = torch.cat([rel_pos, rel_dist], dim=-1)
-    else:
-        edge_attr = torch.zeros(edge_index.shape[1], 0).to(device)  # Empty edges
+        features.append(rel_dist)
+    if use_rel_pos:
+        features.append(rel_pos)
+    edge_attr = (
+        torch.cat(features, dim=-1)
+        if features
+        else torch.zeros(edge_index.shape[1], 0).to(device)
+    )
 
     return edge_index, edge_attr
 

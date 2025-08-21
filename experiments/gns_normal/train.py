@@ -95,8 +95,12 @@ def train(
 
     os.makedirs(checkpoint_dir, exist_ok=True)
 
-    train_glob = sorted(glob(f"{script_dir}/../../datasets/{dataset}/data/simulation_train_*"))
-    test_glob = sorted(glob(f"{script_dir}/../../datasets/{dataset}/data/simulation_test_*"))
+    train_glob = sorted(
+        glob(f"{script_dir}/../../datasets/{dataset}/data/simulation_train_*")
+    )
+    test_glob = sorted(
+        glob(f"{script_dir}/../../datasets/{dataset}/data/simulation_test_*")
+    )
     with open(f"{script_dir}/../../datasets/chiral_repulsion/metadata.json") as f:
         metadata = json.load(f)
 
@@ -246,7 +250,10 @@ def train(
                     gt_trajectory = batch.trajectory
                     rollout = torch.zeros_like(gt_trajectory)
                     vel_pred = pred * metadata["vel_std"] + metadata["vel_mean"]
-                    theta_pred = torch.ones(pred.shape[0]).unsqueeze(1) * metadata["angular_mean"]
+                    theta_pred = (
+                        torch.ones(pred.shape[0]).unsqueeze(1)
+                        * metadata["angular_mean"]
+                    )
                     pred = torch.cat([vel_pred, theta_pred], dim=-1)
                     rollout[0] = apply_periodic_boundary(
                         (pred + batch.full_x).T
@@ -268,7 +275,10 @@ def train(
                         )
                         pred = model(data)
                         vel_pred = pred * metadata["vel_std"] + metadata["vel_mean"]
-                        theta_pred = torch.ones(pred.shape[0]).unsqueeze(1) * metadata["angular_mean"]
+                        theta_pred = (
+                            torch.ones(pred.shape[0]).unsqueeze(1)
+                            * metadata["angular_mean"]
+                        )
                         pred = torch.cat([vel_pred, theta_pred], dim=-1)
                         rollout[roll + 1] = apply_periodic_boundary(
                             (pred + rollout[roll].T).T

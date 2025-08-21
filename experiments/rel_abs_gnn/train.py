@@ -1,4 +1,4 @@
-from src.models_1.egnn import EGNN
+from src.models import GNS
 from src.utils import (
     discrete_simulation,
     ParticleDataset,
@@ -101,7 +101,7 @@ def train(
     test_glob = sorted(
         glob(f"{script_dir}/../../datasets/{dataset}/data/simulation_test_*")
     )
-    with open(f"{script_dir}/../../datasets/chiral_repulsion/metadata.json") as f:
+    with open(f"{script_dir}/../../datasets/{dataset}/metadata.json") as f:
         metadata = json.load(f)
 
     train_simulations = [np.load(sim) for sim in train_glob]
@@ -114,8 +114,9 @@ def train(
         cluster_method=cluster_method,
         p=cluster_parameter,
         use_distance=True,
-        use_relative_encoding=False,
-        egnn=True,
+        use_rel_pos=True,
+        use_pos=True,
+        target_vel=True,
         stats=metadata,
         dtype=dtype,
         device=device,
@@ -127,8 +128,9 @@ def train(
         cluster_method=cluster_method,
         p=cluster_parameter,
         use_distance=True,
-        use_relative_encoding=False,
-        egnn=True,
+        use_rel_pos=True,
+        use_pos=True,
+        target_vel=True,
         stats=metadata,
         dtype=dtype,
         device=device,
@@ -179,7 +181,7 @@ def train(
         "train_samples": len(train_glob),
         "test_samples": len(test_glob),
     }
-    wandb.init(project="ABP_GNN", name="egnn", config=train_details)
+    wandb.init(project="ABP_GNN", name="rel_abs_gns", config=train_details)
 
     details_path = os.path.join(checkpoint_dir, "details.json")
     with open(details_path, "w") as f:
@@ -213,7 +215,7 @@ def train(
         for batch_idx, batch in enumerate(pbar):
             batch = batch.to(device)
             y = batch.y
-            _h, pred = model(batch)
+            pred = model(batch)
             loss = criterion(pred, y).mean()
             metric_train = metric(pred, y).mean()
             optimizer.zero_grad()
@@ -243,20 +245,21 @@ def train(
             for batch in val_loader:
                 batch = batch.to(device)
                 y = batch.y
-                _h, pred = model(batch)
+                pred = model(batch)
                 loss = criterion(pred, y).mean()
                 metric_val = metric(pred, y).mean()
                 if (epoch + 1) % checkpoint_every == 0:
                     gt_trajectory = batch.trajectory
                     rollout = torch.zeros_like(gt_trajectory)
-                    x_pred = pred
-                    theta_diff = (
+                    vel_pred = pred * metadata["vel_std"] + metadata["vel_mean"]
+                    theta_pred = (
                         torch.ones(pred.shape[0]).unsqueeze(1)
                         * metadata["angular_mean"]
                     )
-                    theta_pred = theta_diff + batch.full_x[:, 2].unsqueeze(1)
-                    pred = torch.cat([x_pred, theta_pred], dim=-1)
-                    rollout[0] = apply_periodic_boundary((pred).T)  # Rollout manually
+                    pred = torch.cat([vel_pred, theta_pred], dim=-1)
+                    rollout[0] = apply_periodic_boundary(
+                        (pred + batch.full_x).T
+                    )  # Rollout manually
                     for roll in range(18):
                         x = rollout[roll]
                         edge_index, edge_attr = compute_graph(
@@ -264,24 +267,23 @@ def train(
                             method="radius",
                             p=0.1,
                             use_distance=True,
-                            use_relative_encoding=False,
-                            box_length=1,
+                            use_rel_pos=True,
                         )
                         data = Data(
-                            x=x[2].unsqueeze(0).T,
-                            pos=x[:2].T.to(device).to(dtype=dtype),
+                            x=x.T,
                             edge_index=edge_index,
                             edge_attr=edge_attr,
                         )
-                        _h, pred = model(data)
-                        x_pred = pred
-                        theta_diff = (
+                        pred = model(data)
+                        vel_pred = pred * metadata["vel_std"] + metadata["vel_mean"]
+                        theta_pred = (
                             torch.ones(pred.shape[0]).unsqueeze(1)
                             * metadata["angular_mean"]
                         )
-                        theta_pred = theta_diff + batch.full_x[:, 2].unsqueeze(1)
-                        pred = torch.cat([x_pred, theta_pred], dim=-1)
-                        rollout[roll + 1] = apply_periodic_boundary((pred).T)
+                        pred = torch.cat([vel_pred, theta_pred], dim=-1)
+                        rollout[roll + 1] = apply_periodic_boundary(
+                            (pred + rollout[roll].T).T
+                        )
                     mse_trajectory = (rollout - gt_trajectory).pow(2)
                     mse_1.append(mse_trajectory[0].mean().item())
                     mse_5.append(mse_trajectory[:5].mean().item())
@@ -398,11 +400,11 @@ def train(
 
 if __name__ == "__main__":
     model = (
-        EGNN(
-            n_layers=4,
-            in_node_nf=1,
-            out_node_nf=1,  # Could be any value
-            in_edge_nf=1,
+        GNS(
+            n_layers=3,
+            in_node_nf=3,
+            out_node_nf=2,
+            in_edge_nf=3,
             hidden_nf=64,
             device=device,
             norm=False,
