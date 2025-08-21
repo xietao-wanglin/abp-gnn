@@ -148,7 +148,7 @@ def discrete_simulation(
                 data = Data(
                     x=x_bounded[2].unsqueeze(0).T.to(device).to(dtype=dtype),
                     pos=x_bounded[:2].T.to(device).to(dtype=dtype),
-                    y=y.T.to(device).to(dtype=dtype),
+                    y=y[:2].T.to(device).to(dtype=dtype),
                     edge_index=edge_index.to(device),
                     edge_attr=edge_attr.to(device).to(dtype=dtype),
                     trajectory=apply_periodic_boundary(sim[t + 1 : t + 20, :3]),
