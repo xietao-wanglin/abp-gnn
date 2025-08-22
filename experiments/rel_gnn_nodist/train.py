@@ -113,9 +113,9 @@ def train(
         subset_samples=subset_samples,
         cluster_method=cluster_method,
         p=cluster_parameter,
-        use_distance=True,
+        use_distance=False,
         use_rel_pos=True,
-        use_pos=True,
+        use_pos=False,
         target_vel=True,
         stats=metadata,
         dtype=dtype,
@@ -127,9 +127,9 @@ def train(
         subset_samples=subset_samples,
         cluster_method=cluster_method,
         p=cluster_parameter,
-        use_distance=True,
+        use_distance=False,
         use_rel_pos=True,
-        use_pos=True,
+        use_pos=False,
         target_vel=True,
         stats=metadata,
         dtype=dtype,
@@ -181,7 +181,7 @@ def train(
         "train_samples": len(train_glob),
         "test_samples": len(test_glob),
     }
-    wandb.init(project="ABP_GNN", name="rel_abs_gnn", config=train_details)
+    wandb.init(project="ABP_GNN", name="rel_gnn_nodist", config=train_details)
 
     details_path = os.path.join(checkpoint_dir, "details.json")
     with open(details_path, "w") as f:
@@ -266,11 +266,11 @@ def train(
                             x,
                             method="radius",
                             p=0.1,
-                            use_distance=True,
+                            use_distance=False,
                             use_rel_pos=True,
                         )
                         data = Data(
-                            x=x.T,
+                            x=x[2].unsqueeze(0).T,
                             edge_index=edge_index,
                             edge_attr=edge_attr,
                         )
@@ -402,9 +402,9 @@ if __name__ == "__main__":
     model = (
         GNN(
             n_layers=4,
-            in_node_nf=3,
+            in_node_nf=1,
             out_node_nf=2,
-            in_edge_nf=3,
+            in_edge_nf=2,
             hidden_nf=64,
             device=device,
             norm=False,

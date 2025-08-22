@@ -1,4 +1,4 @@
-from src.models import GNN
+from src.models import GNS
 from src.utils import (
     discrete_simulation,
     ParticleDataset,
@@ -181,7 +181,7 @@ def train(
         "train_samples": len(train_glob),
         "test_samples": len(test_glob),
     }
-    wandb.init(project="ABP_GNN", name="rel_abs_gnn", config=train_details)
+    wandb.init(project="ABP_GNN", name="rel_abs_gns", config=train_details)
 
     details_path = os.path.join(checkpoint_dir, "details.json")
     with open(details_path, "w") as f:
@@ -400,8 +400,8 @@ def train(
 
 if __name__ == "__main__":
     model = (
-        GNN(
-            n_layers=4,
+        GNS(
+            n_layers=3,
             in_node_nf=3,
             out_node_nf=2,
             in_edge_nf=3,
