@@ -1,4 +1,4 @@
-from src.simulation import LennardJonesSimulation
+from src.simulation import RepulsiveSimulation
 
 import numpy as np
 
@@ -14,8 +14,8 @@ def generate_state(n, n_passive, n_boundary, box_length=1.0):
 
     initial_state = np.random.random(3 * n)
     initial_state[2::3] *= 2 * np.pi
-    initial_state[0::3] = initial_state[0::3] * box_length / 4 + 0.25
-    initial_state[1::3] = initial_state[1::3] * box_length / 4 + 0.25
+    initial_state[0::3] = initial_state[0::3] * box_length
+    initial_state[1::3] = initial_state[1::3] * box_length
 
     initial_state = initial_state.reshape(n, 3).T
 
@@ -235,7 +235,7 @@ if __name__ == "__main__":
         n=60, n_passive=0, n_boundary=0, box_length=box_length
     )
 
-    sim = LennardJonesSimulation(
+    sim = RepulsiveSimulation(
         initial_state=initial_state,
         v0=v0,
         box_length=box_length,
@@ -246,8 +246,7 @@ if __name__ == "__main__":
         epsilon=0.1,
         rot_rate=rot_rate,
         timesteps=200,
-        periodic=True,
-        solver_times=False,
+        boundary_type=(0, 0, 1),
     )
     sim.solve_dynamics(method="RK45", debug=True)
-    sim.create_animation()
+    sim.create_animation(xlim=(-0.5, 1.5), ylim=(-0.5, 1.5))

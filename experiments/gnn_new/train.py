@@ -114,11 +114,12 @@ def train(
         subset_samples=subset_samples,
         cluster_method=cluster_method,
         p=cluster_parameter,
-        use_distance=True,
-        use_rel_pos=True,
+        use_distance=False,
+        use_rel_pos=False,
         use_pos=True,
         target_vel=True,
         stats=metadata,
+        boundary_type=(1, 1, 1),
         dtype=dtype,
         device=device,
     )
@@ -128,10 +129,11 @@ def train(
         subset_samples=subset_samples,
         cluster_method=cluster_method,
         p=cluster_parameter,
-        use_distance=True,
-        use_rel_pos=True,
+        use_distance=False,
+        use_rel_pos=False,
         use_pos=True,
         target_vel=True,
+        boundary_type=(1, 1, 1),
         stats=metadata,
         dtype=dtype,
         device=device,
@@ -182,7 +184,7 @@ def train(
         "train_samples": len(train_glob),
         "test_samples": len(test_glob),
     }
-    wandb.init(project="ABP_GNN", name="rel_abs_gnn", config=train_details)
+    wandb.init(project="ABP_GNN", name="unbounded_gnn", config=train_details)
 
     details_path = os.path.join(checkpoint_dir, "details.json")
     with open(details_path, "w") as f:
@@ -259,7 +261,7 @@ def train(
                     )
                     pred = torch.cat([vel_pred, theta_pred], dim=-1)
                     rollout[0] = apply_periodic_boundary(
-                        (pred + batch.full_x).T
+                        (pred + batch.full_x).T, wrap_dims=[0, 1, 2]
                     )  # Rollout manually
                     for roll in range(19):
                         x = rollout[roll]
@@ -267,8 +269,9 @@ def train(
                             x,
                             method="radius",
                             p=0.1,
-                            use_distance=True,
-                            use_rel_pos=True,
+                            use_distance=False,
+                            use_rel_pos=False,
+                            boundary_type=(1, 1, 1),
                         )
                         data = Data(
                             x=x.T,
@@ -283,7 +286,7 @@ def train(
                         )
                         pred = torch.cat([vel_pred, theta_pred], dim=-1)
                         rollout[roll + 1] = apply_periodic_boundary(
-                            (pred + rollout[roll].T).T
+                            (pred + rollout[roll].T).T, wrap_dims=[0, 1, 2]
                         )
                     mse_trajectory = (rollout[:, :2] - gt_trajectory[:, :2]).pow(2)
                     mse_1.append(mse_trajectory[0].mean().item())
@@ -405,7 +408,7 @@ if __name__ == "__main__":
             n_layers=4,
             in_node_nf=3,
             out_node_nf=2,
-            in_edge_nf=3,
+            in_edge_nf=0,
             hidden_nf=64,
             device=device,
             norm=False,
@@ -420,12 +423,13 @@ if __name__ == "__main__":
         cluster_method="radius",
         cluster_parameter=0.1,
         batch_size=32,
-        checkpoint_every=1,
+        checkpoint_every=200,
         n_epochs=10000,
-        lr=1e-4,
+        lr=1e-3,
         weight_decay=1e-8,
         device=device,
         subset=True,
         subset_samples=[0, 20, 40, 60],
+        dataset="chiral_repulsion",
         base_model_path=None,
     )

@@ -1,3 +1,4 @@
+from src.simulation import BoundaryType
 import torch
 from torch_geometric.data import Dataset, Data
 
@@ -5,7 +6,9 @@ from typing import Optional, List, Tuple, Dict
 
 
 def apply_periodic_boundary(
-    positions: torch.Tensor, dims: Optional[List] = None
+    positions: torch.Tensor,
+    dims: Optional[List[float]] = None,
+    wrap_dims: Optional[List[int]] = None,
 ) -> torch.Tensor:
     """
     Applies periodic conditions in three dimensions.
@@ -14,8 +17,10 @@ def apply_periodic_boundary(
     ----------
     positions: torch.Tensor
         Position Tensor.
-    dims: list, optional
+    dims: list[float], optional
         The dimensions of the periodic box, default is None.
+    wrap_dims: list[int], optional.
+        Specifies which dimensions to wrap, default is None.
 
     Returns
     -------
@@ -26,7 +31,21 @@ def apply_periodic_boundary(
         dims = [1.0, 1.0, 2 * torch.pi]
     dims_tensor = torch.tensor(dims, dtype=positions.dtype, device=positions.device)
     dims_tensor = dims_tensor.view(3, 1)
-    return torch.remainder(positions, dims_tensor)
+    if wrap_dims is None:
+        wrap_mask = torch.ones(3, dtype=torch.bool, device=positions.device)
+    else:
+        wrap_mask = torch.zeros(3, dtype=torch.bool, device=positions.device)
+        wrap_mask[wrap_dims] = True
+    out = positions.clone()
+    if positions.ndim == 3:
+        for i in range(3):
+            if wrap_mask[i]:
+                out[:, i, :] = torch.remainder(out[:, i, :], dims_tensor[i])
+    elif positions.ndim == 2:
+        for i in range(3):
+            if wrap_mask[i]:
+                out[i, :] = torch.remainder(out[i, :], dims_tensor[i])
+    return out
 
 
 def discrete_simulation(
@@ -41,6 +60,7 @@ def discrete_simulation(
     use_rel_pos: Optional[bool] = False,
     target_vel: Optional[bool] = True,
     use_pos: Optional[bool] = False,
+    boundary_type: Optional[Tuple] = None,
     stats: Optional[Dict] = None,
     dtype: Optional[torch.dtype] = torch.float,
     device: Optional[str | torch.device] = "cpu",
@@ -72,7 +92,17 @@ def discrete_simulation(
     -------
     data_pairs: List
     """
+    if boundary_type is None:
+        boundary_type = (
+            BoundaryType.PERIODIC,
+            BoundaryType.PERIODIC,
+            BoundaryType.PERIODIC,
+        )
     data_pairs = []
+    wrap_dims = []
+    for j, type in enumerate(boundary_type):
+        if type == BoundaryType.PERIODIC:
+            wrap_dims.append(j)
 
     for idx in range(len(simulation_list)):
         sim = simulation_list[idx]
@@ -105,7 +135,7 @@ def discrete_simulation(
             x = sim[t]
             y = sim[t + 1]
 
-            x_bounded = apply_periodic_boundary(x)  # Ensure [0, 1] x [0, 1] x [0, 2pi]
+            x_bounded = apply_periodic_boundary(x, wrap_dims=wrap_dims)
 
             edge_index, edge_attr = compute_graph(
                 x_bounded,
@@ -113,6 +143,7 @@ def discrete_simulation(
                 p=p,
                 use_distance=use_distance,
                 use_rel_pos=use_rel_pos,
+                boundary_type=boundary_type,
                 device=device,
             )
             if target_vel:
@@ -136,7 +167,9 @@ def discrete_simulation(
                 edge_index=edge_index.to(device),
                 edge_attr=edge_attr.to(device).to(dtype=dtype),
                 pos=x_bounded[:2].T.to(device).to(dtype=dtype),
-                trajectory=apply_periodic_boundary(sim[t + 1 : t + 20]),
+                trajectory=apply_periodic_boundary(sim[t + 1 : t + 21]).permute(
+                    2, 0, 1
+                ),
                 full_x=x_bounded.T.to(device).to(dtype=dtype),
                 particle_type=particle_type,
             )
@@ -225,6 +258,7 @@ def compute_graph(
     use_distance: Optional[bool] = False,
     use_rel_pos: Optional[bool] = False,
     box_length: Optional[float] = 1,
+    boundary_type: Optional[Tuple] = None,
     device: Optional[str | torch.device] = "cpu",
 ) -> Tuple[torch.Tensor, torch.Tensor]:
     """
@@ -248,6 +282,12 @@ def compute_graph(
     edge_attr: torch.Tensor
         Edge features, shape (E, 1).
     """
+    if boundary_type is None:
+        boundary_type = (
+            BoundaryType.PERIODIC,
+            BoundaryType.PERIODIC,
+            BoundaryType.PERIODIC,
+        )
 
     xy, _theta = x[:-1], x[-1]
     xy = xy.transpose(0, 1)
@@ -258,8 +298,10 @@ def compute_graph(
         dx = x_coords.unsqueeze(1) - x_coords.unsqueeze(0)
         dy = y_coords.unsqueeze(1) - y_coords.unsqueeze(0)
 
-        dx = dx - box_length * torch.round(dx / box_length)
-        dy = dy - box_length * torch.round(dy / box_length)
+        if boundary_type[0] == BoundaryType.PERIODIC:
+            dx = dx - box_length * torch.round(dx / box_length)
+        if boundary_type[1] == BoundaryType.PERIODIC:
+            dy = dy - box_length * torch.round(dy / box_length)
 
         distances = torch.sqrt(dx.pow(2) + dy.pow(2))
         edges = torch.where(distances < p)
@@ -272,8 +314,10 @@ def compute_graph(
         dx = x_coords.unsqueeze(1) - x_coords.unsqueeze(0)
         dy = y_coords.unsqueeze(1) - y_coords.unsqueeze(0)
 
-        dx = dx - torch.round(dx)
-        dy = dy - torch.round(dy)
+        if boundary_type[0] == BoundaryType.PERIODIC:
+            dx = dx - box_length * torch.round(dx / box_length)
+        if boundary_type[1] == BoundaryType.PERIODIC:
+            dy = dy - box_length * torch.round(dy / box_length)
 
         distances = torch.sqrt(dx.pow(2) + dy.pow(2))
         k = int(p)
@@ -286,8 +330,15 @@ def compute_graph(
         raise ValueError("Invalid method, must be either 'radius' or 'knn'")
 
     row, col = edge_index
-    rel_pos_raw = xy[row] - xy[col]
-    rel_pos = rel_pos_raw - box_length * torch.round(rel_pos_raw / box_length)
+    rel_pos = xy[row] - xy[col]
+    if boundary_type[0] == BoundaryType.PERIODIC:
+        rel_pos[:, 0] = rel_pos[:, 0] - box_length * torch.round(
+            rel_pos[:, 0] / box_length
+        )
+    if boundary_type[1] == BoundaryType.PERIODIC:
+        rel_pos[:, 1] = rel_pos[:, 1] - box_length * torch.round(
+            rel_pos[:, 1] / box_length
+        )
     rel_dist = torch.sum(rel_pos**2, dim=-1, keepdim=True)
 
     features = []
