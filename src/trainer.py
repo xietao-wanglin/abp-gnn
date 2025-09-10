@@ -198,7 +198,7 @@ class Trainer:
         )
 
     def train(self):
-        wandb.init(project="ABP_GNN", name=self.cfg.wandb.name, config=self.cfg)
+        wandb.init(project="ABP_GNN", name=self.cfg.wandb.name, config=OmegaConf.to_container(self.cfg, resolve=True))
         if self.cfg.train.track_gradients:
             wandb.watch(self.model, log="all", log_freq=125)
         for epoch in range(
