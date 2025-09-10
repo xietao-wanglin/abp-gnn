@@ -1,12 +1,12 @@
-from src.simulation import RepulsiveSimulation
+from src.simulation import LennardJonesSimulation
 
 import numpy as np
 
 
 def generate_state(n, n_passive, n_boundary, box_length=1.0):
-    rot_rate = np.ones(n)
+    rot_rate = np.ones(n) * 0
     rot_rate[:n_passive] = np.zeros(n_passive)
-    v0 = np.ones(n) * 0.1
+    v0 = np.ones(n) * 0
     v0[:n_passive] = np.zeros(n_passive)
     rot_couple = np.zeros(n)
     particle_type = np.ones(n, dtype=int)
@@ -232,21 +232,26 @@ if __name__ == "__main__":
     np.random.seed(893)
     box_length = 1
     rot_rate, v0, rot_couple, particle_type, initial_state = generate_state(
-        n=60, n_passive=0, n_boundary=0, box_length=box_length
+        n=30, n_passive=0, n_boundary=0, box_length=box_length
     )
 
-    sim = RepulsiveSimulation(
+    sim = LennardJonesSimulation(
         initial_state=initial_state,
         v0=v0,
         box_length=box_length,
         delta_t=0.1,
         rot_couple=rot_couple,
         particle_type=particle_type,
-        sigma=0.025,
-        epsilon=0.1,
+        sigma=0.04,
+        epsilon=0.005,
+        law_power=1,
+        repul_strength=12,
+        attr_strength=0.0,
+        reg=0.0,
         rot_rate=rot_rate,
         timesteps=200,
-        boundary_type=(0, 0, 1),
+        noise_std=2e-3,
+        boundary_type=(1, 1, 1),
     )
     sim.solve_dynamics(method="RK45", debug=True)
-    sim.create_animation(xlim=(-0.5, 1.5), ylim=(-0.5, 1.5))
+    sim.create_animation()

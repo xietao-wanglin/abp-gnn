@@ -34,6 +34,7 @@ class Simulation:
         timesteps: Optional[int] = 100,
         delta_t: Optional[float] = 0.1,
         boundary_type: Optional[Tuple] = None,
+        noise_std: Optional[float] = 1e-3,
         seed: Optional[int] = 0,
     ):
         np.random.seed(seed)
@@ -53,6 +54,7 @@ class Simulation:
 
         self.timesteps = timesteps
         self.delta_t = delta_t
+        self.noise_std = noise_std
         if boundary_type is None:
             self.boundary_type = (
                 BoundaryType.PERIODIC,
@@ -145,7 +147,7 @@ class Simulation:
                 )
                 next_state = sol.y[:, -1]
             self.pos_absolute[i + 1] = next_state.reshape(self.n, 3).T
-            next_state = self.apply_periodic_boundary(next_state)
+            next_state = self.apply_periodic_boundary(next_state) + np.random.normal(loc=0, scale=self.noise_std, size=next_state.shape)
             self.positions[i + 1] = next_state.reshape(self.n, 3).T
             self.derivatives[i] = derivatives.reshape(self.n, 3).T
         if debug:
@@ -225,9 +227,15 @@ class LennardJonesSimulation(Simulation):
         particle_type: Optional[np.ndarray] = None,
         epsilon: Optional[float] = 0.1,
         sigma: Optional[float] = 0.01,
+        law_power: Optional[float] = 6.0,
+        reg: Optional[float] = 0.0,
+        repul_strength: Optional[float] = 12.0,
+        attr_strength: Optional[float] = 6.0,
         box_length: Optional[float] = 1.0,
         timesteps: Optional[int] = 100,
         delta_t: Optional[float] = 0.1,
+        boundary_type: Optional[Tuple] = None,
+        noise_std: Optional[float] = 1e-3,
         seed: Optional[int] = 0,
     ):
         super().__init__(
@@ -240,20 +248,26 @@ class LennardJonesSimulation(Simulation):
             timesteps=timesteps,
             delta_t=delta_t,
             initial_state=initial_state,
+            boundary_type=boundary_type,
+            noise_std=noise_std,
             seed=seed,
         )
         self.epsilon = epsilon
         self.sigma = sigma
+        self.law_power = law_power
+        self.reg = reg
+        self.repul_strength = repul_strength
+        self.attr_strength = attr_strength
 
     def repulsion(self, dx, dy, r_cutoff=np.inf):
         distances = np.sqrt(dx**2 + dy**2)
 
         mask = (distances < r_cutoff) & (distances > 0)
 
-        inv_r = 1.0 / distances[mask]
-        inv_r6 = (self.sigma * inv_r) ** 6
+        inv_r = 1.0 / (distances[mask] + self.reg)
+        inv_r6 = (self.sigma * inv_r) ** self.law_power
         inv_r12 = inv_r6**2
-        F_mag = 4 * self.epsilon * (12 * inv_r12 - 6 * inv_r6) * inv_r
+        F_mag = 4 * self.epsilon * (self.repul_strength * inv_r12 - self.attr_strength * inv_r6) * inv_r
 
         Fx = np.zeros_like(distances)
         Fy = np.zeros_like(distances)
@@ -278,8 +292,10 @@ class LennardJonesSimulation(Simulation):
         dx = x[:, None] - x[None, :]
         dy = y[:, None] - y[None, :]
 
-        dx = dx - self.box_length * np.round(dx / self.box_length)
-        dy = dy - self.box_length * np.round(dy / self.box_length)
+        if self.boundary_type[0] == BoundaryType.PERIODIC:
+            dx = dx - self.box_length * np.round(dx / self.box_length)
+        if self.boundary_type[1] == BoundaryType.PERIODIC:
+            dy = dy - self.box_length * np.round(dy / self.box_length)
         distances = np.sqrt(dx**2 + dy**2)
 
         neighbor_mask = (distances < self.couple_radius) & (distances > 0)
@@ -290,8 +306,8 @@ class LennardJonesSimulation(Simulation):
 
         Fx_total, Fy_total = self.repulsion(dx, dy)
 
-        dxdt += Fx_total
-        dydt += Fy_total
+        dxdt += Fx_total - 0.5*(x - 0)
+        dydt += Fy_total - 0.5*(y - 0)
 
         dthetadt = self.rot_rate + self.rot_couple * interaction
         dxdt *= boundary_mask
@@ -516,17 +532,27 @@ class SoftRepulsionSimulation(Simulation):
         r_cutoff = np.inf
 
         distances = np.sqrt(dx**2 + dy**2)
-
         mask = (distances > 0) & (distances < r_cutoff)
-        exp_factor = np.empty_like(distances)
-        exp_factor.fill(0.0)
-        rs = distances[mask] / self.sigma
-        exp_factor[mask] = np.exp(-(rs**2))
 
-        prefac = (2.0 * self.epsilon) / (self.sigma**2)
+        # Initialize forces
+        Fx = np.zeros_like(distances)
+        Fy = np.zeros_like(distances)
 
-        Fx = prefac * exp_factor * dx
-        Fy = prefac * exp_factor * dy
+        if np.any(mask):
+            rs = distances[mask] / self.sigma
+
+            # Repulsive term (original exponential)
+            exp_factor = np.exp(-(rs**2))
+            prefac_rep = (2.0 * self.epsilon) / (self.sigma**2)
+            Fx[mask] += prefac_rep * exp_factor * dx[mask]
+            Fy[mask] += prefac_rep * exp_factor * dy[mask]
+
+            # Soft attractive term
+            A = 2 * self.epsilon   # attractive strength (tunable)
+            r0 = self.sigma          # decay length (tunable)
+            attractive_factor = -A * np.exp(-distances[mask] / r0) / distances[mask]
+            Fx[mask] += attractive_factor * dx[mask]
+            Fy[mask] += attractive_factor * dy[mask]
 
         Fx_total = np.sum(Fx, axis=1)
         Fy_total = np.sum(Fy, axis=1)

@@ -1,4 +1,4 @@
-from src.models import GNS
+from src.models import GNN
 from src.utils import (
     discrete_simulation,
     ParticleDataset,
@@ -30,6 +30,7 @@ print(f"Using {device} device")
 dtype = torch.double
 seed = 0
 torch.manual_seed(seed)
+np.random.seed(0)
 wandb.login()
 
 
@@ -37,14 +38,15 @@ def train(
     model: nn.Module,
     cluster_method: str,
     cluster_parameter: float | int,
-    batch_size: Optional[int] = 32,
-    n_epochs: Optional[int] = 100,
-    lr: Optional[float] = 5e-4,
-    weight_decay: Optional[float] = 1e-4,
+    batch_size: Optional[int] = 1,
+    n_epochs: Optional[int] = 10000,
+    lr: Optional[float] = 1e-4,
+    weight_decay: Optional[float] = 1e-8,
     device: Optional[str | torch.device] = "cpu",
     checkpoint_dir: Optional[str] = "checkpoints",
-    checkpoint_every: Optional[int] = 2,
+    checkpoint_every: Optional[int] = 200,
     hist_filename: Optional[str] = "training_history",
+    dataset: Optional[str] = "nonchiral_lj",
     subset: Optional[bool] = False,
     subset_samples: Optional[List] = None,
     base_model_path: Optional[str] = None,
@@ -94,8 +96,14 @@ def train(
 
     os.makedirs(checkpoint_dir, exist_ok=True)
 
-    train_glob = sorted(glob(f"{script_dir}/data/simulation_train_*"))
-    test_glob = sorted(glob(f"{script_dir}/data/simulation_test_*"))
+    train_glob = sorted(
+        glob(f"{script_dir}/../../datasets/{dataset}/data/simulation_train_*")
+    )
+    test_glob = sorted(
+        glob(f"{script_dir}/../../datasets/{dataset}/data/simulation_test_*")
+    )
+    with open(f"{script_dir}/../../datasets/{dataset}/metadata.json") as f:
+        metadata = json.load(f)
 
     train_simulations = [np.load(sim) for sim in train_glob]
     test_simulations = [np.load(sim) for sim in test_glob]
@@ -107,7 +115,11 @@ def train(
         cluster_method=cluster_method,
         p=cluster_parameter,
         use_distance=False,
-        use_relative_encoding=True,
+        use_rel_pos=False,
+        use_pos=True,
+        target_vel=False,
+        stats=metadata,
+        boundary_type=(1, 1, 1),
         dtype=dtype,
         device=device,
     )
@@ -118,7 +130,11 @@ def train(
         cluster_method=cluster_method,
         p=cluster_parameter,
         use_distance=False,
-        use_relative_encoding=True,
+        use_rel_pos=False,
+        use_pos=True,
+        target_vel=False,
+        boundary_type=(1, 1, 1),
+        stats=metadata,
         dtype=dtype,
         device=device,
     )
@@ -134,7 +150,7 @@ def train(
 
     val_loader = DataLoader(
         test_dataset,
-        batch_size=1,
+        batch_size=200,
     )
 
     optimizer = AdamW(model.parameters(), lr=lr, weight_decay=weight_decay)
@@ -168,7 +184,7 @@ def train(
         "train_samples": len(train_glob),
         "test_samples": len(test_glob),
     }
-    wandb.init(project="ABP_GNN", name="repulsion", config=train_details)
+    wandb.init(project="ABP_GNN", name="nonchiral_lr", config=train_details)
 
     details_path = os.path.join(checkpoint_dir, "details.json")
     with open(details_path, "w") as f:
@@ -210,8 +226,8 @@ def train(
             optimizer.step()
             wandb.log(
                 {
-                    "train_batch_loss": loss.item(),
-                    "train_batch_metric": metric_train.item(),
+                    "train/batch_loss": loss.item(),
+                    "train/batch_metric": metric_train.item(),
                     "epoch": epoch,
                 }
             )
@@ -223,7 +239,7 @@ def train(
         val_losses = []
         val_metrics = []
 
-        if (epoch + 1) % checkpoint_every == 0:
+        if False:
             mse_1 = []
             mse_5 = []
             mse_10 = []
@@ -235,32 +251,44 @@ def train(
                 pred = model(batch)
                 loss = criterion(pred, y).mean()
                 metric_val = metric(pred, y).mean()
-                if (epoch + 1) % checkpoint_every == 0:
-                    gt_trajectory = batch.trajectory
+                if False:
+                    gt_trajectory = batch.trajectory.permute(1, 2, 0)
                     rollout = torch.zeros_like(gt_trajectory)
+                    vel_pred = pred * metadata["vel_std"] + metadata["vel_mean"]
+                    theta_pred = (
+                        torch.ones(pred.shape[0]).unsqueeze(1)
+                        * metadata["angular_mean"]
+                    )
+                    pred = torch.cat([vel_pred, theta_pred], dim=-1)
                     rollout[0] = apply_periodic_boundary(
-                        (pred + batch.full_x).T
+                        (pred + batch.full_x).T, wrap_dims=[0, 1, 2]
                     )  # Rollout manually
-                    for roll in range(18):
+                    for roll in range(19):
                         x = rollout[roll]
                         edge_index, edge_attr = compute_graph(
                             x,
-                            method=cluster_method,
-                            p=cluster_parameter,
+                            method="radius",
+                            p=0.1,
                             use_distance=False,
-                            use_relative_encoding=True,
-                            box_length=1,
+                            use_rel_pos=False,
+                            boundary_type=(1, 1, 1),
                         )
                         data = Data(
-                            x=x[2].unsqueeze(0).T,
+                            x=x[:2].T,
                             edge_index=edge_index,
                             edge_attr=edge_attr,
                         )
                         pred = model(data)
-                        rollout[roll + 1] = apply_periodic_boundary(
-                            (pred + rollout[roll].T).T
+                        vel_pred = pred * metadata["vel_std"] + metadata["vel_mean"]
+                        theta_pred = (
+                            torch.ones(pred.shape[0]).unsqueeze(1)
+                            * metadata["angular_mean"]
                         )
-                    mse_trajectory = (rollout - gt_trajectory).pow(2)
+                        pred = torch.cat([vel_pred, theta_pred], dim=-1)
+                        rollout[roll + 1] = apply_periodic_boundary(
+                            (pred + rollout[roll].T).T, wrap_dims=[0, 1, 2]
+                        )
+                    mse_trajectory = (rollout[:, :2] - gt_trajectory[:, :2]).pow(2)
                     mse_1.append(mse_trajectory[0].mean().item())
                     mse_5.append(mse_trajectory[:5].mean().item())
                     mse_10.append(mse_trajectory[:10].mean().item())
@@ -269,12 +297,16 @@ def train(
                 val_metrics.append(metric_val.item())
 
         avg_train_loss = np.mean(train_losses)
+        std_train_loss = np.std(train_losses)
         avg_val_loss = np.mean(val_losses)
+        std_val_loss = np.std(val_losses)
 
         avg_train_metric = np.mean(train_metrics)
+        std_train_metric = np.std(train_metrics)
         avg_val_metric = np.mean(val_metrics)
+        std_val_metric = np.std(val_metrics)
 
-        if (epoch + 1) % checkpoint_every == 0:
+        if False:
             avg_mse_1 = np.mean(mse_1)
             avg_mse_5 = np.mean(mse_5)
             avg_mse_10 = np.mean(mse_10)
@@ -286,29 +318,28 @@ def train(
         history["val_metric"].append(avg_val_metric)
         if scheduler is not None:
             scheduler.step()
-        if (epoch + 1) % checkpoint_every == 0:
+
+        wandb.log(
+            {
+                "epoch": epoch + 1,
+                "train/loss": avg_train_loss,
+                "train/std_loss": std_train_loss,
+                "train/metric": avg_train_metric,
+                "train/std_metric": std_train_metric,
+                "val/loss": avg_val_loss,
+                "val/std_loss": std_val_loss,
+                "val/metric": avg_val_metric,
+                "val/std_metric": std_val_metric,
+                "lr": scheduler.get_last_lr()[0] if scheduler else lr,
+            }
+        )
+        if False:
             wandb.log(
                 {
-                    "epoch": epoch + 1,
-                    "train_loss": avg_train_loss,
-                    "train_metric": avg_train_metric,
-                    "val_loss": avg_val_loss,
-                    "val_metric": avg_val_metric,
-                    "mse_1": avg_mse_1,
-                    "mse_5": avg_mse_5,
-                    "mse_10": avg_mse_10,
-                    "mse_20": avg_mse_20,
-                    "lr": scheduler.get_last_lr()[0] if scheduler else lr,
-                }
-            )
-        else:
-            wandb.log(
-                {
-                    "epoch": epoch + 1,
-                    "train_loss": avg_train_loss,
-                    "train_metric": avg_train_metric,
-                    "val_loss": avg_val_loss,
-                    "val_metric": avg_val_metric,
+                    "val/mse_1": avg_mse_1,
+                    "val/mse_5": avg_mse_5,
+                    "val/mse_10": avg_mse_10,
+                    "val/mse_20": avg_mse_20,
                     "lr": scheduler.get_last_lr()[0] if scheduler else lr,
                 }
             )
@@ -367,20 +398,18 @@ def train(
                 indent=4,
             )
 
-        print(f"Training history saved to {history_path}")
-
     wandb.finish()
     return history
 
 
 if __name__ == "__main__":
     model = (
-        GNS(
-            n_layers=10,
-            in_node_nf=1,
-            out_node_nf=3,
-            in_edge_nf=3,
-            hidden_nf=128,
+        GNN(
+            n_layers=4,
+            in_node_nf=2,
+            out_node_nf=2,
+            in_edge_nf=0,
+            hidden_nf=64,
             device=device,
             norm=False,
             activation=nn.SiLU(),
@@ -391,15 +420,16 @@ if __name__ == "__main__":
 
     history = train(
         model=model,
-        cluster_method="knn",
-        cluster_parameter=4,
-        batch_size=1,
-        checkpoint_every=200,
+        cluster_method="radius",
+        cluster_parameter=10.0,
+        batch_size=32,
+        checkpoint_every=2,
         n_epochs=10000,
         lr=1e-4,
         weight_decay=1e-8,
         device=device,
         subset=True,
-        subset_samples=[10, 30, 50, 70],
+        subset_samples=[0, 20, 40, 60],
+        dataset="nonchiral_low_repulsion",
         base_model_path=None,
     )

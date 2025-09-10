@@ -120,7 +120,6 @@ def discrete_simulation(
 
         num_timesteps = sim.shape[0] - 1
 
-        # Choose steps pairs
         if subset:
             if subset_samples is None:
                 timesteps = torch.randint(
@@ -157,7 +156,7 @@ def discrete_simulation(
                 label = y[:2].T
 
             if use_pos:
-                data_input = x_bounded.T.to(device).to(dtype=dtype)
+                data_input = x_bounded[:2].T.to(device).to(dtype=dtype)
             else:
                 data_input = x_bounded[2].unsqueeze(0).T.to(device).to(dtype=dtype)
 
