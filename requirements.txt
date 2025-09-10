@@ -6,3 +6,4 @@ torch_geometric
 matplotlib
 scipy
 wandb
+omegaconf

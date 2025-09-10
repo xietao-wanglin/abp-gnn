@@ -147,7 +147,9 @@ class Simulation:
                 )
                 next_state = sol.y[:, -1]
             self.pos_absolute[i + 1] = next_state.reshape(self.n, 3).T
-            next_state = self.apply_periodic_boundary(next_state) + np.random.normal(loc=0, scale=self.noise_std, size=next_state.shape)
+            next_state = self.apply_periodic_boundary(next_state) + np.random.normal(
+                loc=0, scale=self.noise_std, size=next_state.shape
+            )
             self.positions[i + 1] = next_state.reshape(self.n, 3).T
             self.derivatives[i] = derivatives.reshape(self.n, 3).T
         if debug:
@@ -267,7 +269,12 @@ class LennardJonesSimulation(Simulation):
         inv_r = 1.0 / (distances[mask] + self.reg)
         inv_r6 = (self.sigma * inv_r) ** self.law_power
         inv_r12 = inv_r6**2
-        F_mag = 4 * self.epsilon * (self.repul_strength * inv_r12 - self.attr_strength * inv_r6) * inv_r
+        F_mag = (
+            4
+            * self.epsilon
+            * (self.repul_strength * inv_r12 - self.attr_strength * inv_r6)
+            * inv_r
+        )
 
         Fx = np.zeros_like(distances)
         Fy = np.zeros_like(distances)
@@ -306,8 +313,8 @@ class LennardJonesSimulation(Simulation):
 
         Fx_total, Fy_total = self.repulsion(dx, dy)
 
-        dxdt += Fx_total - 0.5*(x - 0)
-        dydt += Fy_total - 0.5*(y - 0)
+        dxdt += Fx_total - 0.5 * (x - 0)
+        dydt += Fy_total - 0.5 * (y - 0)
 
         dthetadt = self.rot_rate + self.rot_couple * interaction
         dxdt *= boundary_mask
@@ -548,8 +555,8 @@ class SoftRepulsionSimulation(Simulation):
             Fy[mask] += prefac_rep * exp_factor * dy[mask]
 
             # Soft attractive term
-            A = 2 * self.epsilon   # attractive strength (tunable)
-            r0 = self.sigma          # decay length (tunable)
+            A = 2 * self.epsilon  # attractive strength (tunable)
+            r0 = self.sigma  # decay length (tunable)
             attractive_factor = -A * np.exp(-distances[mask] / r0) / distances[mask]
             Fx[mask] += attractive_factor * dx[mask]
             Fy[mask] += attractive_factor * dy[mask]

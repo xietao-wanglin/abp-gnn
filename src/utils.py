@@ -62,7 +62,7 @@ def discrete_simulation(
     use_pos: Optional[bool] = False,
     boundary_type: Optional[Tuple] = None,
     stats: Optional[Dict] = None,
-    dtype: Optional[torch.dtype] = torch.float,
+    dtype: Optional[torch.dtype] = torch.double,
     device: Optional[str | torch.device] = "cpu",
 ) -> List:
     """
@@ -185,7 +185,7 @@ def continuous_simulation(
     cluster_method: Optional[str] = "radius",
     p: Optional[int] = 0.1,
     use_distance: Optional[bool] = False,
-    dtype: Optional[torch.dtype] = torch.float,
+    dtype: Optional[torch.dtype] = torch.double,
     device: Optional[str | torch.device] = "cpu",
 ) -> List:
     """

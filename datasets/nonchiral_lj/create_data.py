@@ -26,7 +26,16 @@ def generate_state(n, box_length=1.0):
 
     initial_state = initial_state.reshape(n, 3).T
 
-    return rot_rate, v0, rot_couple, sigma,  epsilon, law_power, boundary_type, initial_state
+    return (
+        rot_rate,
+        v0,
+        rot_couple,
+        sigma,
+        epsilon,
+        law_power,
+        boundary_type,
+        initial_state,
+    )
 
 
 def compute_stats(script_dir):
@@ -60,9 +69,16 @@ if __name__ == "__main__":
     for i in tqdm(range(train_init, train_sims + train_init), desc="Training Set"):
         np.random.seed(i)
         n = np.random.randint(15, 30)
-        rot_rate, v0, rot_couple, sigma, epsilon, law_power, boundary_type, initial_state = generate_state(
-            n=n
-        )
+        (
+            rot_rate,
+            v0,
+            rot_couple,
+            sigma,
+            epsilon,
+            law_power,
+            boundary_type,
+            initial_state,
+        ) = generate_state(n=n)
         sim = LennardJonesSimulation(
             v0=v0,
             rot_couple=rot_couple,
@@ -82,9 +98,16 @@ if __name__ == "__main__":
     for i in tqdm(range(test_init, test_sims + test_init), desc="Test Set"):
         np.random.seed(98743 * i + 4500)
         n = np.random.randint(15, 30)
-        rot_rate, v0, rot_couple, sigma, epsilon, law_power, boundary_type, initial_state = generate_state(
-            n=n
-        )
+        (
+            rot_rate,
+            v0,
+            rot_couple,
+            sigma,
+            epsilon,
+            law_power,
+            boundary_type,
+            initial_state,
+        ) = generate_state(n=n)
         sim = LennardJonesSimulation(
             v0=v0,
             rot_couple=rot_couple,
@@ -104,9 +127,16 @@ if __name__ == "__main__":
     for i in tqdm(range(long_test_sims), desc="Long Test Set"):
         np.random.seed(983 * i + 2000)
         n = np.random.randint(60, 120)
-        rot_rate, v0, rot_couple, sigma, epsilon, law_power, boundary_type, initial_state = generate_state(
-            n=n
-        )
+        (
+            rot_rate,
+            v0,
+            rot_couple,
+            sigma,
+            epsilon,
+            law_power,
+            boundary_type,
+            initial_state,
+        ) = generate_state(n=n)
         sim = LennardJonesSimulation(
             v0=v0,
             rot_couple=rot_couple,
