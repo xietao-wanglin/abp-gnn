@@ -11,7 +11,6 @@ from torch_geometric.loader import DataLoader
 import wandb
 
 import numpy as np
-from tqdm import tqdm
 
 import os
 import json
@@ -27,7 +26,8 @@ class Trainer:
             self.cfg = OmegaConf.load(f)
         if self.cfg.seed is None:
             self.seed = random.randint(0, 2**31)
-        self.seed = self.cfg.seed
+        else:
+            self.seed = self.cfg.seed
         self.set_seed(self.seed)
         self.dtype = torch.double
 
@@ -52,14 +52,7 @@ class Trainer:
         self.criterion = nn.MSELoss(reduction="none")
         self.metric = nn.L1Loss(reduction="none")
 
-        self.history = {
-            "train_loss": [],
-            "train_metric": [],
-            "val_loss": [],
-            "val_metric": [],
-            "best_val_loss": float("inf"),
-        }
-        self.initial_epoch = 0
+        self.initial_step = 0
         if self.cfg.train.base_model_path is not None:
             self.load_trained_model(self.cfg.train.base_model_path)
 
@@ -128,7 +121,7 @@ class Trainer:
 
         self.val_loader = DataLoader(
             test_dataset,
-            batch_size=len(test_dataset),
+            batch_size=self.cfg.val.batch_size,
         )
 
     def create_model(self):
@@ -145,7 +138,7 @@ class Trainer:
                 norm=self.cfg.model.norm,
             ).to(dtype=self.dtype).to(device=self.device)
         else:
-            print("Model name not valid.")
+            raise ValueError(f"Unknown model type: {model_type}")
         return model
 
     def load_trained_model(self, path):
@@ -154,45 +147,46 @@ class Trainer:
         self.optimizer.load_state_dict(params["optimizer_state_dict"])
         if self.scheduler and params["scheduler_state_dict"]:
             self.scheduler.load_state_dict(params["scheduler_state_dict"])
-        self.initial_epoch = params["epoch"]
+        self.initial_step = params["step"]
+
+    def logs(self, loss, metric, type):
+        metrics = {
+            f"{type}/loss": loss.mean(),
+            f"{type}/std_loss": loss.std(),
+            f"{type}/metric": metric.mean(),
+            f"{type}/std_metric": metric.std(),
+        }
+        return metrics
 
     def train_step(self, batch):
         batch = batch.to(self.device)
         y = batch.y
         pred = self.model(batch)
-        loss = self.criterion(pred, y).mean()
-        metric_train = self.metric(pred, y).mean()
+        loss = self.criterion(pred, y)
+        metric = self.metric(pred, y)
         self.optimizer.zero_grad()
-        loss.backward()
+        loss.mean().backward()
         self.optimizer.step()
 
-        wandb.log(
-            {
-                "train/batch_loss": loss.item(),
-                "train/batch_metric": metric_train.item(),
-            }
-        )
-        return loss, metric_train
+        return loss, metric
 
     def val_step(self, batch):
         batch = batch.to(self.device)
         y = batch.y
         pred = self.model(batch)
-        loss = self.criterion(pred, y).mean()
-        metric_val = self.metric(pred, y).mean()
-        return loss, metric_val
+        loss = self.criterion(pred, y)
+        metric = self.metric(pred, y)
+        return loss, metric
 
-    def save_ckpt(self, epoch, train_loss, val_loss, path):
+    def save_ckpt(self, step, path):
         torch.save(
             {
-                "epoch": epoch + 1,
+                "step": step,
                 "model_state_dict": self.model.state_dict(),
                 "optimizer_state_dict": self.optimizer.state_dict(),
                 "scheduler_state_dict": self.scheduler.state_dict()
                 if self.scheduler
                 else None,
-                "train_loss": train_loss,
-                "val_loss": val_loss,
             },
             path,
         )
@@ -200,81 +194,40 @@ class Trainer:
     def train(self):
         wandb.init(project="ABP_GNN", name=self.cfg.wandb.name, config=OmegaConf.to_container(self.cfg, resolve=True))
         if self.cfg.train.track_gradients:
-            wandb.watch(self.model, log="all", log_freq=125)
-        for epoch in range(
-            self.initial_epoch, self.cfg.train.n_epochs + self.initial_epoch
-        ):
+            wandb.watch(self.model, log="all")
+        
+        step = self.initial_step
+        while step < self.cfg.train.n_steps + self.initial_step:
             self.model.train()
-            train_losses = []
-            train_metrics = []
-            pbar = tqdm(
-                self.train_loader,
-                desc=f"Epoch {epoch + 1}/{self.cfg.train.n_epochs + self.initial_epoch}",
-            )
-            for batch_idx, batch in enumerate(pbar):
-                loss, metric_train = self.train_step(batch)
-                pbar.set_postfix({"loss": f"{loss.item():.6f}"})
-                train_losses.append(loss.item())
-                train_metrics.append(metric_train.item())
+            for batch in self.train_loader:
+                step += 1
+                loss, metric = self.train_step(batch)
+                if (step % self.cfg.train.log_steps) == 0:
+                    train_logs = self.logs(loss, metric, type="train")
+                    wandb.log(train_logs, step=step)
 
-            self.model.eval()
-            val_losses = []
-            val_metrics = []
-            with torch.no_grad():
-                for batch in self.val_loader:
-                    loss, metric_val = self.val_step(batch)
-                    val_losses.append(loss.item())
-                    val_metrics.append(metric_val.item())
+                if (step % self.cfg.val.log_steps) == 0:
+                    self.model.eval()
+                    all_losses, all_metrics = [], []
+                    with torch.no_grad():
+                        for batch in self.val_loader:
+                            loss, metric = self.val_step(batch)
+                            all_losses.append(loss)
+                            all_metrics.append(metric)
+                    combined_loss = torch.cat(all_losses, dim=0)
+                    combined_metric = torch.cat(all_metrics, dim=0)
+                    val_logs = self.logs(combined_loss, combined_metric, type="val")
+                    wandb.log(val_logs, step=step)
+                    self.model.train()
+                    print(f"Step: {step} --- Validation loss: {val_logs['val/loss']}")
 
-            avg_train_loss = np.mean(train_losses)
-            std_train_loss = np.std(train_losses)
-            avg_val_loss = np.mean(val_losses)
-            std_val_loss = np.std(val_losses)
-
-            avg_train_metric = np.mean(train_metrics)
-            std_train_metric = np.std(train_metrics)
-            avg_val_metric = np.mean(val_metrics)
-            std_val_metric = np.std(val_metrics)
-
-            self.history["train_loss"].append(avg_train_loss)
-            self.history["val_loss"].append(avg_val_loss)
-            self.history["train_metric"].append(avg_train_metric)
-            self.history["val_metric"].append(avg_val_metric)
+                if (step % self.cfg.train.checkpoint_every) == 0:
+                    checkpoint_path = os.path.join(
+                        self.checkpoint_dir, f"model_step_{step}.pt"
+                    )
+                    self.save_ckpt(step, checkpoint_path)
 
             if self.scheduler is not None:
                 self.scheduler.step()
-
-            wandb.log(
-                {
-                    "epoch": epoch + 1,
-                    "train/loss": avg_train_loss,
-                    "train/std_loss": std_train_loss,
-                    "train/metric": avg_train_metric,
-                    "train/std_metric": std_train_metric,
-                    "val/loss": avg_val_loss,
-                    "val/std_loss": std_val_loss,
-                    "val/metric": avg_val_metric,
-                    "val/std_metric": std_val_metric,
-                    "lr": self.scheduler.get_last_lr()[0]
-                    if self.scheduler
-                    else self.cfg.train.lr,
-                }
-            )
-
-            if avg_val_loss < self.history["best_val_loss"]:
-                self.history["best_val_loss"] = avg_val_loss
-                checkpoint_path = os.path.join(self.checkpoint_dir, "best_model.pt")
-                self.save_ckpt(epoch, avg_train_loss, avg_val_loss, checkpoint_path)
-
-            if (epoch + 1) % self.cfg.train.checkpoint_every == 0:
-                checkpoint_path = os.path.join(
-                    self.checkpoint_dir, f"model_epoch_{epoch + 1}.pt"
-                )
-                self.save_ckpt(epoch, avg_train_loss, avg_val_loss, checkpoint_path)
-
-            print(f"\nEpoch {epoch + 1}/{self.cfg.train.n_epochs + self.initial_epoch}")
-            print(f"Train Loss: {avg_train_loss:.8f}")
-            print(f"Val Loss: {avg_val_loss:.8f}")
-            print("-" * 30)
 
         wandb.finish()

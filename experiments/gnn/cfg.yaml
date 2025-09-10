@@ -19,10 +19,18 @@ train:
   lr: 1e-3
   weight_decay: 1e-8
   batch_size: 32
-  n_epochs: 200
-  checkpoint_every: 1
+  n_steps: 20000
+  checkpoint_every: 250
+  log_steps: 1
   base_model_path: null
   track_gradients: false
+
+val:
+  batch_size: 200
+  log_steps: 250
+
+test:
+  log_steps: 250
 
 data:
   subset: true
