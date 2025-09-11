@@ -1,0 +1,11 @@
+method: random
+
+parameters:
+  train.lr:
+    values: [1e-2, 5e-3, 1e-3, 5e-4,]
+  train.batch_size:
+    values: [16, 128, 1000]
+  model.hidden_nf:
+    values: [16, 64, 256]
+  model.n_layers:
+    values: [1, 4, 12]

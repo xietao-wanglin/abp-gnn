@@ -2,12 +2,16 @@ from src.models import GNN
 from src.utils import (
     discrete_simulation,
     ParticleDataset,
+    apply_periodic_boundary, 
+    compute_graph,
 )
+
 
 import torch
 import torch.nn as nn
 from torch.optim import AdamW
 from torch_geometric.loader import DataLoader
+from torch_geometric.data import Data, Batch
 import wandb
 
 import numpy as np
@@ -41,6 +45,7 @@ class Trainer:
 
         os.makedirs(self.checkpoint_dir, exist_ok=True)
         self.load_data(self.cfg.dataset)
+        self.prepare_test(self.cfg.data.subset_samples)
         self.model = self.create_model()
 
         self.optimizer = AdamW(
@@ -64,7 +69,7 @@ class Trainer:
         train_glob = sorted(
             glob(f"{self.script_dir}/../../datasets/{dataset}/data/simulation_train_*")
         )
-        test_glob = sorted(
+        val_glob = sorted(
             glob(f"{self.script_dir}/../../datasets/{dataset}/data/simulation_test_*")
         )
         with open(f"{self.script_dir}/../../datasets/{dataset}/metadata.json") as f:
@@ -74,9 +79,9 @@ class Trainer:
             torch.tensor(np.load(f), device=self.device, dtype=self.dtype)
             for f in train_glob
         ]
-        self.test_simulations = [
+        self.val_simulations = [
             torch.tensor(np.load(f), device=self.device, dtype=self.dtype)
-            for f in test_glob
+            for f in val_glob
         ]
 
         data_pairs_train = discrete_simulation(
@@ -94,8 +99,8 @@ class Trainer:
             dtype=self.dtype,
             device=self.device,
         )
-        data_pairs_test = discrete_simulation(
-            self.test_simulations,
+        data_pairs_val = discrete_simulation(
+            self.val_simulations,
             subset=self.cfg.data.subset,
             subset_samples=self.cfg.data.subset_samples,
             cluster_method=self.cfg.data.cluster.method,
@@ -111,7 +116,7 @@ class Trainer:
         )
 
         train_dataset = ParticleDataset(data_pairs_train)
-        test_dataset = ParticleDataset(data_pairs_test)
+        val_dataset = ParticleDataset(data_pairs_val)
 
         self.train_loader = DataLoader(
             train_dataset,
@@ -120,23 +125,36 @@ class Trainer:
         )
 
         self.val_loader = DataLoader(
-            test_dataset,
+            val_dataset,
             batch_size=self.cfg.val.batch_size,
         )
+
+    def get_activation(self, name):
+        if name == "silu":
+            return nn.SiLU()
+        elif name == "linear":
+            return nn.Identity()
+        else:
+            raise ValueError(f"Unknown activation: {name}")
 
     def create_model(self):
         model_type = self.cfg.model.name
         if model_type == "GNN":
-            model = GNN(
-                n_layers=self.cfg.model.n_layers,
-                in_node_nf=self.cfg.model.in_node_nf,
-                out_node_nf=self.cfg.model.out_node_nf,
-                in_edge_nf=self.cfg.model.in_edge_nf,
-                hidden_nf=self.cfg.model.hidden_nf,
-                device=self.device,
-                dropout=self.cfg.model.dropout,
-                norm=self.cfg.model.norm,
-            ).to(dtype=self.dtype).to(device=self.device)
+            model = (
+                GNN(
+                    n_layers=self.cfg.model.n_layers,
+                    in_node_nf=self.cfg.model.in_node_nf,
+                    out_node_nf=self.cfg.model.out_node_nf,
+                    in_edge_nf=self.cfg.model.in_edge_nf,
+                    hidden_nf=self.cfg.model.hidden_nf,
+                    device=self.device,
+                    dropout=self.cfg.model.dropout,
+                    norm=self.cfg.model.norm,
+                    activation=self.get_activation(self.cfg.model.activation)
+                )
+                .to(dtype=self.dtype)
+                .to(device=self.device)
+            )
         else:
             raise ValueError(f"Unknown model type: {model_type}")
         return model
@@ -177,6 +195,111 @@ class Trainer:
         loss = self.criterion(pred, y)
         metric = self.metric(pred, y)
         return loss, metric
+    
+    def prepare_test(self, timesteps):
+        initial_states = []
+        ground_truths = []
+        for sim in self.val_simulations:
+            for t in timesteps:
+                x_init = sim[t]
+                x_bounded = apply_periodic_boundary(x_init)
+                initial_states.append(x_bounded)
+
+                gt_trajectory = apply_periodic_boundary(sim[t + 1 : t + 21])
+                ground_truths.append(gt_trajectory)
+
+        self.initial_states = initial_states
+        self.ground_truths = ground_truths
+        self.rollout_length = len(ground_truths[0])
+
+        return len(initial_states)
+    
+    def compute_rollout(self):
+        num_trajectories = len(self.initial_states)
+
+        predictions = []
+        for i in range(num_trajectories):
+            N_i = self.initial_states[i].shape[1]
+            pred_trajectory = torch.zeros(
+                self.rollout_length + 1, 3, N_i, dtype=self.dtype
+            )
+            pred_trajectory[0] = self.initial_states[i]
+            predictions.append(pred_trajectory)
+
+        for t in range(self.rollout_length):
+            batch_data_list = []
+            trajectory_sizes = []
+
+            for traj_idx in range(num_trajectories):
+                x = predictions[traj_idx][t].clone()
+                N_i = x.shape[1]
+                trajectory_sizes.append(N_i)
+
+                x_bounded = apply_periodic_boundary(x)
+
+                edge_index, edge_attr = compute_graph(
+                    x_bounded,
+                    method=self.cfg.data.cluster.method,
+                    p=self.cfg.data.cluster.parameter,
+                    use_distance=self.cfg.data.features.use_distance,
+                    use_rel_pos=self.cfg.data.features.use_rel_pos,
+                    boundary_type=self.cfg.data.boundary_type,
+                    device=self.device,
+                )
+
+                data = Data(
+                    x=x_bounded[:2].T, edge_index=edge_index, edge_attr=edge_attr
+                )
+                batch_data_list.append(data)
+
+            batched_data = Batch.from_data_list(batch_data_list)
+
+            with torch.no_grad():
+                batched_pred = (
+                    self.model(batched_data) * self.metadata["vel_std"]
+                    + self.metadata["vel_mean"]
+                )
+
+            start_idx = 0
+            for traj_idx in range(num_trajectories):
+                N_i = trajectory_sizes[traj_idx]
+                end_idx = start_idx + N_i
+
+                vel_pred = batched_pred[start_idx:end_idx]
+
+                theta_vel = torch.ones(N_i, 1) * self.metadata["angular_mean"]
+                full_vel_pred = torch.cat([vel_pred, theta_vel], dim=-1)
+
+                current_state = predictions[traj_idx][t].clone()
+                next_state = current_state + full_vel_pred.T
+
+                predictions[traj_idx][t + 1] = apply_periodic_boundary(next_state)
+
+                start_idx = end_idx
+
+        self.predictions = predictions
+
+    def test_metrics(self):
+        mse_all = []
+
+        for pred, gt in zip(self.predictions, self.ground_truths):
+            pred_rollout = pred[1:]
+
+            mse_1 = torch.mean((pred_rollout[0, :2] - gt[0, :2]) ** 2)
+            mse_5 = torch.mean((pred_rollout[:5, :2] - gt[:5, :2]) ** 2)
+            mse_10 = torch.mean((pred_rollout[:10, :2] - gt[:10, :2]) ** 2)
+            mse_20 = torch.mean((pred_rollout[:20, :2] - gt[:20, :2]) ** 2)
+            mse_all.append([mse_1.item(), mse_5.item(), mse_10.item(), mse_20.item()])
+
+        mse_all = np.array(mse_all)
+        metrics = {
+            "test/mse_1": mse_all[:, 0].mean(),
+            "test/mse_5": mse_all[:, 1].mean(),
+            "test/mse_10": mse_all[:, 2].mean(),
+            "test/mse_20": mse_all[:, 3].mean(),
+        }
+
+        return metrics
 
     def save_ckpt(self, step, path):
         torch.save(
@@ -192,10 +315,14 @@ class Trainer:
         )
 
     def train(self):
-        wandb.init(project="ABP_GNN", name=self.cfg.wandb.name, config=OmegaConf.to_container(self.cfg, resolve=True))
-        if self.cfg.train.track_gradients:
+        wandb.init(
+            project="ABP_GNN",
+            name=self.cfg.wandb.name,
+            config=OmegaConf.to_container(self.cfg, resolve=True),
+        )
+        if self.cfg.wandb.track_gradients:
             wandb.watch(self.model, log="all")
-        
+
         step = self.initial_step
         while step < self.cfg.train.n_steps + self.initial_step:
             self.model.train()
@@ -226,6 +353,13 @@ class Trainer:
                         self.checkpoint_dir, f"model_step_{step}.pt"
                     )
                     self.save_ckpt(step, checkpoint_path)
+
+                if (step % self.cfg.test.log_steps) == 0:
+                    self.model.eval()
+                    self.compute_rollout()
+                    metrics = self.test_metrics()
+                    wandb.log(metrics, step=step)
+                    self.model.train()
 
             if self.scheduler is not None:
                 self.scheduler.step()

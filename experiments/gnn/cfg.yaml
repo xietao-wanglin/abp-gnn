@@ -4,6 +4,7 @@ dataset: "nonchiral_lj_noise"
 
 wandb:
   name: "gnn"
+  track_gradients: false
 
 model:
   name: "GNN"
@@ -14,6 +15,7 @@ model:
   hidden_nf: 64
   dropout: 0.0
   norm: false
+  activation: "silu"
 
 train:
   lr: 1e-3
@@ -23,7 +25,6 @@ train:
   checkpoint_every: 250
   log_steps: 1
   base_model_path: null
-  track_gradients: false
 
 val:
   batch_size: 200
