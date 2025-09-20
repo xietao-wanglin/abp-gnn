@@ -3,30 +3,72 @@ import torch.nn as nn
 from torch_geometric.nn import MessagePassing, LayerNorm, GATConv
 
 
+class MLP(nn.Module):
+    def __init__(
+        self,
+        in_dim,
+        out_dim,
+        hidden_dim,
+        n_layers,
+        activation=nn.SiLU(),
+        dropout=0.0,
+        out_activation=False,
+    ):
+        super().__init__()
+
+        layers = []
+        dim = in_dim
+        for i in range(n_layers - 1):
+            layers.append(nn.Linear(dim, hidden_dim))
+            if dropout > 0:
+                layers.append(nn.Dropout(dropout))
+            layers.append(activation)
+            dim = hidden_dim
+
+        layers.append(nn.Linear(dim, out_dim))
+        if out_activation:
+            layers.append(activation)
+
+        self.net = nn.Sequential(*layers)
+
+    def forward(self, x):
+        return self.net(x)
+
+
 class GNN_Layer(MessagePassing):
     def __init__(
-        self, hidden_nf, edge_nf, activation=nn.SiLU(), dropout=0.0, norm=True
+        self,
+        hidden_nf,
+        edge_nf,
+        activation=nn.SiLU(),
+        dropout=0.0,
+        norm=True,
+        edge_mlp_depth=2,
+        node_mlp_depth=2,
     ):
-        super(GNN_Layer, self).__init__(aggr="sum")
+        super().__init__(aggr="sum")
         self.hidden_nf = hidden_nf
         self.edge_nf = edge_nf
-        self.activation = activation
-        self.dropout = nn.Dropout(dropout) if dropout > 0.0 else nn.Identity()
-        self.norm = LayerNorm(hidden_nf) if norm else None
+        self.norm = nn.LayerNorm(hidden_nf) if norm else None
 
-        self.edge_mlp = nn.Sequential(
-            nn.Linear(2 * hidden_nf + edge_nf, hidden_nf),
-            self.dropout,
-            activation,
-            nn.Linear(hidden_nf, hidden_nf),
-            activation,
+        self.edge_mlp = MLP(
+            in_dim=2 * hidden_nf + edge_nf,
+            out_dim=hidden_nf,
+            hidden_dim=hidden_nf,
+            n_layers=edge_mlp_depth,
+            activation=activation,
+            dropout=dropout,
+            out_activation=True,
         )
-        self.node_mlp = nn.Sequential(
-            nn.Linear(hidden_nf + hidden_nf, hidden_nf),
-            self.dropout,
-            activation,
-            nn.Linear(hidden_nf, hidden_nf),
-            activation,
+
+        self.node_mlp = MLP(
+            in_dim=2 * hidden_nf,
+            out_dim=hidden_nf,
+            hidden_dim=hidden_nf,
+            n_layers=node_mlp_depth,
+            activation=activation,
+            dropout=dropout,
+            out_activation=True,
         )
 
     def forward(self, x, edge_index, edge_attr, batch=None):
@@ -66,44 +108,50 @@ class GNN(nn.Module):
         out_node_nf,
         in_edge_nf,
         hidden_nf,
+        encoder_depth=2,
+        decoder_depth=2,
+        edge_mlp_depth=2,
+        node_mlp_depth=2,
         activation=nn.SiLU(),
         device="cpu",
         dropout=0.0,
         norm=True,
     ):
-        super(GNN, self).__init__()
+        super().__init__()
 
-        self.name = "Discrete_GNN"
-
-        self.n_layers = n_layers
-        self.in_node_nf = in_node_nf
-        self.out_node_nf = out_node_nf
-        self.in_edge_nf = in_edge_nf
-        self.hidden_nf = hidden_nf
-        self.activation = activation
-        self.dropout = dropout
-        self.norm = norm
-
-        self.encoder = nn.Sequential(
-            nn.Linear(in_node_nf, hidden_nf),
-            nn.Linear(hidden_nf, hidden_nf),
-            activation,
-            nn.Linear(hidden_nf, hidden_nf),
-            activation,
+        self.encoder = MLP(
+            in_dim=in_node_nf,
+            out_dim=hidden_nf,
+            hidden_dim=hidden_nf,
+            n_layers=encoder_depth,
+            activation=activation,
+            dropout=dropout,
+            out_activation=True,
         )
-        self.layers = nn.ModuleList()
 
-        for _ in range(self.n_layers):
-            self.layers.append(
-                GNN_Layer(hidden_nf, in_edge_nf, activation, dropout, norm)
-            )
+        self.layers = nn.ModuleList(
+            [
+                GNN_Layer(
+                    hidden_nf,
+                    in_edge_nf,
+                    activation,
+                    dropout,
+                    norm,
+                    edge_mlp_depth,
+                    node_mlp_depth,
+                )
+                for _ in range(n_layers)
+            ]
+        )
 
-        self.decoder = nn.Sequential(
-            nn.Linear(hidden_nf, hidden_nf),
-            activation,
-            nn.Linear(hidden_nf, hidden_nf),
-            activation,
-            nn.Linear(hidden_nf, out_node_nf),
+        self.decoder = MLP(
+            in_dim=hidden_nf,
+            out_dim=out_node_nf,
+            hidden_dim=hidden_nf,
+            n_layers=decoder_depth,
+            activation=activation,
+            dropout=dropout,
+            out_activation=False,
         )
 
         self.to(device)
@@ -115,15 +163,10 @@ class GNN(nn.Module):
             data.edge_attr,
             data.batch,
         )
-
         x = self.encoder(x)
-
         for layer in self.layers:
             x = layer(x, edge_index, edge_attr, batch)
-
-        x = self.decoder(x)
-
-        return x
+        return self.decoder(x)
 
 
 class GNS_Layer(MessagePassing):

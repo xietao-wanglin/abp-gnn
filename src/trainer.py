@@ -2,7 +2,7 @@ from src.models import GNN
 from src.utils import (
     discrete_simulation,
     ParticleDataset,
-    apply_periodic_boundary, 
+    apply_periodic_boundary,
     compute_graph,
 )
 
@@ -147,10 +147,14 @@ class Trainer:
                     out_node_nf=self.cfg.model.out_node_nf,
                     in_edge_nf=self.cfg.model.in_edge_nf,
                     hidden_nf=self.cfg.model.hidden_nf,
+                    encoder_depth=self.cfg.model.encoder_depth,
+                    decoder_depth=self.cfg.model.decoder_depth,
+                    edge_mlp_depth=self.cfg.model.edge_mlp_depth,
+                    node_mlp_depth=self.cfg.model.node_mlp_depth,
                     device=self.device,
                     dropout=self.cfg.model.dropout,
                     norm=self.cfg.model.norm,
-                    activation=self.get_activation(self.cfg.model.activation)
+                    activation=self.get_activation(self.cfg.model.activation),
                 )
                 .to(dtype=self.dtype)
                 .to(device=self.device)
@@ -176,6 +180,14 @@ class Trainer:
         }
         return metrics
 
+    def get_grad_norm(self):
+        total_norm = 0.0
+        for p in self.model.parameters():
+            if p.grad is not None:
+                param_norm = p.grad.data.norm(2)
+                total_norm += param_norm.item() ** 2
+        return total_norm**0.5
+
     def train_step(self, batch):
         batch = batch.to(self.device)
         y = batch.y
@@ -184,9 +196,11 @@ class Trainer:
         metric = self.metric(pred, y)
         self.optimizer.zero_grad()
         loss.mean().backward()
+
+        grad_norm = self.get_grad_norm()
         self.optimizer.step()
 
-        return loss, metric
+        return loss, metric, grad_norm
 
     def val_step(self, batch):
         batch = batch.to(self.device)
@@ -195,7 +209,7 @@ class Trainer:
         loss = self.criterion(pred, y)
         metric = self.metric(pred, y)
         return loss, metric
-    
+
     def prepare_test(self, timesteps):
         initial_states = []
         ground_truths = []
@@ -213,7 +227,7 @@ class Trainer:
         self.rollout_length = len(ground_truths[0])
 
         return len(initial_states)
-    
+
     def compute_rollout(self):
         num_trajectories = len(self.initial_states)
 
@@ -321,17 +335,18 @@ class Trainer:
             config=OmegaConf.to_container(self.cfg, resolve=True),
         )
         if self.cfg.wandb.track_gradients:
-            wandb.watch(self.model, log="all")
+            wandb.watch(self.model, log="all", log_freq=self.cfg.wandb.gradients_every)
 
         step = self.initial_step
         while step < self.cfg.train.n_steps + self.initial_step:
             self.model.train()
             for batch in self.train_loader:
                 step += 1
-                loss, metric = self.train_step(batch)
+                loss, metric, grad_norm = self.train_step(batch)
                 if (step % self.cfg.train.log_steps) == 0:
                     train_logs = self.logs(loss, metric, type="train")
                     wandb.log(train_logs, step=step)
+                    wandb.log({"gradients/total": grad_norm}, step=step)
 
                 if (step % self.cfg.val.log_steps) == 0:
                     self.model.eval()
