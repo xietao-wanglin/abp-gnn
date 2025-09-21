@@ -24,16 +24,14 @@ from omegaconf import OmegaConf
 
 
 class Trainer:
-    def __init__(self, config):
-        config_path = os.path.abspath(config)
-        with open(config_path, "r") as f:
-            self.cfg = OmegaConf.load(f)
+    def __init__(self, config, config_path):
+        self.cfg = config
         if self.cfg.seed is None:
             self.seed = random.randint(0, 2**31)
         else:
             self.seed = self.cfg.seed
         self.set_seed(self.seed)
-        self.dtype = torch.double
+        self.dtype = torch.float
 
         self.device = (
             torch.accelerator.current_accelerator().type
@@ -235,7 +233,11 @@ class Trainer:
         for i in range(num_trajectories):
             N_i = self.initial_states[i].shape[1]
             pred_trajectory = torch.zeros(
-                self.rollout_length + 1, 3, N_i, dtype=self.dtype
+                self.rollout_length + 1,
+                3,
+                N_i,
+                dtype=self.dtype,
+                device=self.device,
             )
             pred_trajectory[0] = self.initial_states[i]
             predictions.append(pred_trajectory)
@@ -266,7 +268,7 @@ class Trainer:
                 )
                 batch_data_list.append(data)
 
-            batched_data = Batch.from_data_list(batch_data_list)
+            batched_data = Batch.from_data_list(batch_data_list).to(self.device)
 
             with torch.no_grad():
                 batched_pred = (
@@ -281,7 +283,10 @@ class Trainer:
 
                 vel_pred = batched_pred[start_idx:end_idx]
 
-                theta_vel = torch.ones(N_i, 1) * self.metadata["angular_mean"]
+                theta_vel = (
+                    torch.ones(N_i, 1, device=self.device, dtype=self.dtype)
+                    * self.metadata["angular_mean"]
+                )
                 full_vel_pred = torch.cat([vel_pred, theta_vel], dim=-1)
 
                 current_state = predictions[traj_idx][t].clone()
@@ -329,11 +334,6 @@ class Trainer:
         )
 
     def train(self):
-        wandb.init(
-            project="ABP_GNN",
-            name=self.cfg.wandb.name,
-            config=OmegaConf.to_container(self.cfg, resolve=True),
-        )
         if self.cfg.wandb.track_gradients:
             wandb.watch(self.model, log="all", log_freq=self.cfg.wandb.gradients_every)
 
