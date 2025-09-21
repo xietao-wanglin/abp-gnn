@@ -4,7 +4,7 @@ dataset: "nonchiral_lj_noise"
 
 wandb:
   name: "gnn"
-  track_gradients: false
+  track_gradients: true
   gradients_every: 125
 
 model:
