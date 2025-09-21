@@ -8,4 +8,4 @@
 export TQDM_DISABLE=1
 module load GCCcore/13.2.0 Python/3.11.5
 
-srun python main.py ./experiments/gnn/cfg.yaml
+srun wandb agent ./experiments/gnn/sweep.yaml
