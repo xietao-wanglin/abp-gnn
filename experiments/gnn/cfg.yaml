@@ -4,7 +4,7 @@ dataset: "nonchiral_lj_noise"
 
 wandb:
   name: "gnn"
-  track_gradients: true
+  track_gradients: false
   gradients_every: 125
 
 model:
@@ -25,7 +25,7 @@ model:
 train:
   lr: 1e-3
   weight_decay: 1e-8
-  batch_size: 1000
+  batch_size: 32
   n_steps: 20000
   checkpoint_every: 250
   log_steps: 1

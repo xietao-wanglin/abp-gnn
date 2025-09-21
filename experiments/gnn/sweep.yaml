@@ -1,11 +1,15 @@
 method: random
 
 parameters:
-  train.lr:
-    values: [1e-2, 5e-3, 1e-3, 5e-4,]
-  train.batch_size:
-    values: [16, 128, 1000]
   model.hidden_nf:
     values: [16, 64, 256]
   model.n_layers:
-    values: [1, 4, 12]
+    values: [1, 4, 8]
+  model.encoder_depth:
+    values: [1, 2, 4]
+  model.decoder_depth:
+    values: [1, 2, 4]
+  model.batch_size:
+    values: [1e-2, 1e-3, 5e-4, 1e-4]
+  model.dropout:
+    values: [0.0, 0.1]
