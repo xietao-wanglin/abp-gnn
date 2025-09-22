@@ -45,6 +45,11 @@ class Trainer:
         self.prepare_test(self.cfg.data.subset_samples)
         self.model = self.create_model()
 
+        num_params = sum(p.numel() for p in self.model.parameters())
+        wandb.config.update(
+            {"model": {"num_parameters": num_params}}, allow_val_change=True
+        )
+
         self.optimizer = AdamW(
             self.model.parameters(),
             lr=self.cfg.train.lr,
