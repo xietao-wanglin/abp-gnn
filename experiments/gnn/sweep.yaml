@@ -2,18 +2,25 @@ method: random
 program: main.py
 
 parameters:
-  model.hidden_nf:
-    values: [16, 64, 256]
-  model.n_layers:
-    values: [1, 4, 8]
-  model.encoder_depth:
-    values: [1, 2, 4]
-  model.decoder_depth:
-    values: [1, 2, 4]
-  model.batch_size:
-    values: [1e-2, 1e-3, 5e-4, 1e-4]
-  model.dropout:
-    values: [0.0, 0.1]
+  model:
+    parameters:
+      hidden_nf:
+        values: [16, 64, 256]
+      n_layers:
+        values: [1, 4, 8]
+      encoder_depth:
+        values: [1, 2, 4]
+      decoder_depth:
+        values: [1, 2, 4]
+      dropout:
+        values: [0.0, 0.1]
+
+  train:
+    parameters:
+      lr:
+        values: [0.01, 0.001, 0.0005, 0.0001]
+      weight_decay:
+        values: [0.001, 0.00001, 0.00000001]
 
 command:
   - ${env}

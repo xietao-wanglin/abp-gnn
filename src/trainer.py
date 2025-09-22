@@ -20,7 +20,6 @@ import os
 import json
 import random
 from glob import glob
-from omegaconf import OmegaConf
 
 
 class Trainer:
