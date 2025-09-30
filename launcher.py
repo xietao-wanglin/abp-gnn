@@ -4,9 +4,9 @@ import numpy as np
 
 
 def generate_state(n, n_passive, n_boundary, box_length=1.0):
-    rot_rate = np.ones(n) * 0
+    rot_rate = np.ones(n) * 1
     rot_rate[:n_passive] = np.zeros(n_passive)
-    v0 = np.ones(n) * 0
+    v0 = np.ones(n) * 0.1
     v0[:n_passive] = np.zeros(n_passive)
     rot_couple = np.zeros(n)
     particle_type = np.ones(n, dtype=int)
@@ -232,7 +232,7 @@ if __name__ == "__main__":
     np.random.seed(893)
     box_length = 1
     rot_rate, v0, rot_couple, particle_type, initial_state = generate_state(
-        n=30, n_passive=0, n_boundary=0, box_length=box_length
+        n=120, n_passive=0, n_boundary=0, box_length=box_length
     )
 
     sim = LennardJonesSimulation(
@@ -243,15 +243,16 @@ if __name__ == "__main__":
         rot_couple=rot_couple,
         particle_type=particle_type,
         sigma=0.04,
-        epsilon=0.005,
-        law_power=1,
+        epsilon=0.1,
+        law_power=6,
         repul_strength=12,
         attr_strength=0.0,
         reg=0.0,
         rot_rate=rot_rate,
-        timesteps=200,
-        noise_std=2e-3,
+        timesteps=1000,
+        noise_t=0,
+        noise_d=0,
         boundary_type=(1, 1, 1),
     )
     sim.solve_dynamics(method="RK45", debug=True)
-    sim.create_animation()
+    sim.create_animation(every=1)

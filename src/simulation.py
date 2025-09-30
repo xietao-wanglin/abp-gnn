@@ -34,7 +34,8 @@ class Simulation:
         timesteps: Optional[int] = 100,
         delta_t: Optional[float] = 0.1,
         boundary_type: Optional[Tuple] = None,
-        noise_std: Optional[float] = 1e-3,
+        noise_t: Optional[float] = 1e-3,
+        noise_d: Optional[float] = 1e-3,
         seed: Optional[int] = 0,
     ):
         np.random.seed(seed)
@@ -54,7 +55,8 @@ class Simulation:
 
         self.timesteps = timesteps
         self.delta_t = delta_t
-        self.noise_std = noise_std
+        self.noise_t = noise_t
+        self.noise_d = noise_d
         if boundary_type is None:
             self.boundary_type = (
                 BoundaryType.PERIODIC,
@@ -68,7 +70,6 @@ class Simulation:
         self.positions[0] = initial_state
         self.pos_absolute = np.zeros(shape=(self.timesteps, 3, self.n))
         self.pos_absolute[0] = initial_state
-        self.derivatives = np.zeros(shape=(self.timesteps - 1, 3, self.n))
         self.times = np.arange(0, self.delta_t * self.timesteps, self.delta_t)
 
     def particle_system(self, t, positions):
@@ -116,10 +117,10 @@ class Simulation:
         if debug:
             start = time()
         for i, t in enumerate(tqdm(self.times[:-1], leave=debug, desc="Simulation")):
-            derivatives = self.particle_system(
-                t, self.positions[i].T.reshape(3 * self.n)
-            )
             if method == "Euler":
+                derivatives = self.particle_system(
+                    t, self.positions[i].T.reshape(3 * self.n)
+                )
                 next_state = (
                     self.positions[i].T.reshape(3 * self.n) + self.delta_t * derivatives
                 )
@@ -147,11 +148,11 @@ class Simulation:
                 )
                 next_state = sol.y[:, -1]
             self.pos_absolute[i + 1] = next_state.reshape(self.n, 3).T
-            next_state = self.apply_periodic_boundary(next_state) + np.random.normal(
-                loc=0, scale=self.noise_std, size=next_state.shape
-            )
+            next_state[::3] += np.random.normal(loc=0, scale=self.noise_t*self.delta_t, size=next_state[::3].shape)
+            next_state[1::3] += np.random.normal(loc=0, scale=self.noise_t*self.delta_t, size=next_state[::3].shape)
+            next_state[2::3] += np.random.normal(loc=0, scale=self.noise_d*self.delta_t, size=next_state[::3].shape)
+            next_state = self.apply_periodic_boundary(next_state)
             self.positions[i + 1] = next_state.reshape(self.n, 3).T
-            self.derivatives[i] = derivatives.reshape(self.n, 3).T
         if debug:
             end = time()
             print(f"Time elapsed: {end - start:.2f} seconds")
@@ -162,6 +163,7 @@ class Simulation:
         filename: Optional[str] = None,
         xlim: Optional[Tuple] = None,
         ylim: Optional[Tuple] = None,
+        every: Optional[int] = 1,
     ):
         times, positions = self.get_solution()
         f = plt.figure(figsize=(6, 5))
@@ -188,6 +190,7 @@ class Simulation:
         f.colorbar(points, label=r"Orientation $\theta_i$")
 
         def update(fn):
+            fn = every*fn
             ax.set_title(rf"Time: {times[fn]:2f}")
             points.set_offsets(np.c_[positions[fn][0], positions[fn][1]])
             points.set_array(positions[fn][2])
@@ -195,27 +198,17 @@ class Simulation:
             f.canvas.draw_idle()
 
         if timesteps is None:
-            timesteps = self.timesteps
+            timesteps = int(self.timesteps/every)
         animation = FuncAnimation(f, update, interval=50, frames=timesteps)
         if filename is not None:
             animation.save(f"./videos/{filename}", writer="ffmpeg", fps=20)
         plt.show()
 
-    def get_solution(self):
-        return self.times, self.positions
+    def get_solution(self, every=1):
+        return self.times[::every], self.positions[::every]
 
-    def get_solution_abs(self):
-        return self.times, self.pos_absolute
-
-    def get_derivatives(self):
-        return self.times, self.derivatives
-
-    def get_extended_solutions(self):
-        params = np.vstack([self.rot_couple, self.v0, self.rot_couple])
-        params = params[np.newaxis, ...]
-        params_repeat = np.repeat(params, self.timesteps, axis=0)
-        extended_solution = np.concat([self.pos_absolute, params_repeat], axis=1)
-        return self.times, extended_solution
+    def get_solution_abs(self, every=1):
+        return self.times[::every], self.pos_absolute[::every]
 
 
 class LennardJonesSimulation(Simulation):
@@ -237,7 +230,8 @@ class LennardJonesSimulation(Simulation):
         timesteps: Optional[int] = 100,
         delta_t: Optional[float] = 0.1,
         boundary_type: Optional[Tuple] = None,
-        noise_std: Optional[float] = 1e-3,
+        noise_t: Optional[float] = 1e-3,
+        noise_d: Optional[float] = 1e-3,
         seed: Optional[int] = 0,
     ):
         super().__init__(
@@ -251,7 +245,8 @@ class LennardJonesSimulation(Simulation):
             delta_t=delta_t,
             initial_state=initial_state,
             boundary_type=boundary_type,
-            noise_std=noise_std,
+            noise_t=noise_t,
+            noise_d=noise_d,
             seed=seed,
         )
         self.epsilon = epsilon
@@ -313,8 +308,8 @@ class LennardJonesSimulation(Simulation):
 
         Fx_total, Fy_total = self.repulsion(dx, dy)
 
-        dxdt += Fx_total - 0.5 * (x - 0)
-        dydt += Fy_total - 0.5 * (y - 0)
+        dxdt += Fx_total
+        dydt += Fy_total
 
         dthetadt = self.rot_rate + self.rot_couple * interaction
         dxdt *= boundary_mask
@@ -503,103 +498,6 @@ class WCASimulation(Simulation):
         derivative = np.vstack([dxdt, dydt, dthetadt])
         return derivative.T.reshape(3 * self.n)
 
-
-class SoftRepulsionSimulation(Simulation):
-    def __init__(
-        self,
-        initial_state: Optional[np.ndarray] = None,
-        v0: Optional[np.ndarray | float] = None,
-        rot_rate: Optional[np.ndarray | int] = None,
-        rot_couple: Optional[np.ndarray | float] = None,
-        couple_radius: Optional[float] = 0.1,
-        particle_type: Optional[np.ndarray] = None,
-        epsilon: Optional[float] = 0.1,
-        sigma: Optional[float] = 0.01,
-        box_length: Optional[float] = 1.0,
-        timesteps: Optional[int] = 100,
-        delta_t: Optional[float] = 0.1,
-        seed: Optional[int] = 0,
-    ):
-        super().__init__(
-            v0=v0,
-            rot_rate=rot_rate,
-            rot_couple=rot_couple,
-            couple_radius=couple_radius,
-            particle_type=particle_type,
-            box_length=box_length,
-            timesteps=timesteps,
-            delta_t=delta_t,
-            initial_state=initial_state,
-            seed=seed,
-        )
-        self.epsilon = epsilon
-        self.sigma = sigma
-
-    def repulsion(self, dx, dy):
-        r_cutoff = np.inf
-
-        distances = np.sqrt(dx**2 + dy**2)
-        mask = (distances > 0) & (distances < r_cutoff)
-
-        # Initialize forces
-        Fx = np.zeros_like(distances)
-        Fy = np.zeros_like(distances)
-
-        if np.any(mask):
-            rs = distances[mask] / self.sigma
-
-            # Repulsive term (original exponential)
-            exp_factor = np.exp(-(rs**2))
-            prefac_rep = (2.0 * self.epsilon) / (self.sigma**2)
-            Fx[mask] += prefac_rep * exp_factor * dx[mask]
-            Fy[mask] += prefac_rep * exp_factor * dy[mask]
-
-            # Soft attractive term
-            A = 2 * self.epsilon  # attractive strength (tunable)
-            r0 = self.sigma  # decay length (tunable)
-            attractive_factor = -A * np.exp(-distances[mask] / r0) / distances[mask]
-            Fx[mask] += attractive_factor * dx[mask]
-            Fy[mask] += attractive_factor * dy[mask]
-
-        Fx_total = np.sum(Fx, axis=1)
-        Fy_total = np.sum(Fy, axis=1)
-
-        return Fx_total, Fy_total
-
-    def particle_system(self, t, positions):
-        positions = positions.reshape(self.n, 3).T
-        x = positions[0]
-        y = positions[1]
-        theta = positions[2]
-
-        boundary_mask = self.particle_type > ParticleType.BOUNDARY
-        dxdt = self.v0 * np.cos(theta)
-        dydt = self.v0 * np.sin(theta)
-
-        dx = x[:, None] - x[None, :]
-        dy = y[:, None] - y[None, :]
-
-        dx = dx - self.box_length * np.round(dx / self.box_length)
-        dy = dy - self.box_length * np.round(dy / self.box_length)
-        distances = np.sqrt(dx**2 + dy**2)
-
-        neighbor_mask = (distances < self.couple_radius) & (distances > 0)
-
-        interaction = np.sum(
-            neighbor_mask * np.sin(theta[None, :] - theta[:, None]), axis=1
-        )
-
-        Fx_total, Fy_total = self.repulsion(dx, dy)
-
-        dxdt += Fx_total
-        dydt += Fy_total
-
-        dthetadt = self.rot_rate + self.rot_couple * interaction
-        dxdt *= boundary_mask
-        dydt *= boundary_mask
-        dthetadt *= boundary_mask
-        derivative = np.vstack([dxdt, dydt, dthetadt])
-        return derivative.T.reshape(3 * self.n)
 
 
 class BoxedRepulsiveSimulation(Simulation):
