@@ -1,12 +1,14 @@
+from src.simulation import BoundaryType
 import torch
 from torch_geometric.data import Dataset, Data
 
-from typing import Optional, List, Tuple
-from src.simulation import LennardJonesSimulation
+from typing import Optional, List, Tuple, Dict
 
 
 def apply_periodic_boundary(
-    positions: torch.Tensor, dims: Optional[List] = None
+    positions: torch.Tensor,
+    dims: Optional[List[float]] = None,
+    wrap_dims: Optional[List[int]] = None,
 ) -> torch.Tensor:
     """
     Applies periodic conditions in three dimensions.
@@ -15,8 +17,10 @@ def apply_periodic_boundary(
     ----------
     positions: torch.Tensor
         Position Tensor.
-    dims: list, optional
+    dims: list[float], optional
         The dimensions of the periodic box, default is None.
+    wrap_dims: list[int], optional.
+        Specifies which dimensions to wrap, default is None.
 
     Returns
     -------
@@ -25,34 +29,50 @@ def apply_periodic_boundary(
     """
     if dims is None:
         dims = [1.0, 1.0, 2 * torch.pi]
-    pos = positions.clone()
-    pos[0] = pos[0] % dims[0]
-    pos[1] = pos[1] % dims[1]
-    pos[2] = pos[2] % dims[2]
-    return pos
+    dims_tensor = torch.tensor(dims, dtype=positions.dtype, device=positions.device)
+    dims_tensor = dims_tensor.view(3, 1)
+    if wrap_dims is None:
+        wrap_mask = torch.ones(3, dtype=torch.bool, device=positions.device)
+    else:
+        wrap_mask = torch.zeros(3, dtype=torch.bool, device=positions.device)
+        wrap_mask[wrap_dims] = True
+    out = positions.clone()
+    if positions.ndim == 3:
+        for i in range(3):
+            if wrap_mask[i]:
+                out[:, i, :] = torch.remainder(out[:, i, :], dims_tensor[i])
+    elif positions.ndim == 2:
+        for i in range(3):
+            if wrap_mask[i]:
+                out[i, :] = torch.remainder(out[i, :], dims_tensor[i])
+    return out
 
 
 def discrete_simulation(
     simulation_list: List,
+    particle_type_list: Optional[List] = None,
     subset: Optional[bool] = False,
     subset_samples: Optional[List] = None,
     n_samples: Optional[int] = 4,
     cluster_method: Optional[str] = "radius",
     p: Optional[int] = 0.1,
     use_distance: Optional[bool] = False,
-    use_relative_encoding: Optional[bool] = False,
-    use_derivatives: Optional[bool] = False,
-    dtype: Optional[torch.dtype] = torch.float,
+    use_rel_pos: Optional[bool] = False,
+    target_vel: Optional[bool] = True,
+    use_pos: Optional[bool] = False,
+    boundary_type: Optional[Tuple] = None,
+    stats: Optional[Dict] = None,
+    dtype: Optional[torch.dtype] = torch.double,
     device: Optional[str | torch.device] = "cpu",
 ) -> List:
     """
     Process multiple simulations for training.
     Returns list of (input, target) pairs.
-    
+
     Parameters
     ----------
     simulation_list: List
-        List of simulation arrays, each of shape (timesteps, 3, N) where N can vary between simulations.
+        List of simulation arrays, each of shape (timesteps, 3, N).
     subset: bool, optional
         If True, selects `n_samples` random timesteps instead of all.
     subset_samples: List, optional
@@ -63,7 +83,7 @@ def discrete_simulation(
         Method used to create edges in graph, either 'radius' or 'knn', default is 'radius'.
     p: float or int, optional
         Parameter of `cluster_method`, default is 0.1.
-    dtype : torch.dtype
+    dtype: torch.dtype
         Data type for conversion, default is torch.float.
     device: str or torch.device, optional
         Either 'cpu', 'cuda' or torch.device instance, default is 'cpu'.
@@ -71,18 +91,35 @@ def discrete_simulation(
     Returns
     -------
     data_pairs: List
-        [(x1, y1, edge_index1, edge_attr1), (x2, y2, edge_index2, edge_attr2), ...]
-        where each x and y represents one timestep pair from any simulation.
     """
+    if boundary_type is None:
+        boundary_type = (
+            BoundaryType.PERIODIC,
+            BoundaryType.PERIODIC,
+            BoundaryType.PERIODIC,
+        )
     data_pairs = []
+    wrap_dims = []
+    for j, type in enumerate(boundary_type):
+        if type == BoundaryType.PERIODIC:
+            wrap_dims.append(j)
 
-    for sim in simulation_list:
+    for idx in range(len(simulation_list)):
+        sim = simulation_list[idx]
+        if particle_type_list is not None:
+            particle_type = particle_type_list[idx]
+            if not torch.is_tensor(particle_type):
+                particle_type = torch.tensor(
+                    particle_type, dtype=torch.int, device=device
+                )
+        else:
+            particle_type = None
+
         if not torch.is_tensor(sim):
             sim = torch.tensor(sim, dtype=dtype)
 
         num_timesteps = sim.shape[0] - 1
 
-        # Choose steps pairs
         if subset:
             if subset_samples is None:
                 timesteps = torch.randint(
@@ -97,48 +134,44 @@ def discrete_simulation(
             x = sim[t]
             y = sim[t + 1]
 
-            x_bounded = apply_periodic_boundary(x)  # Ensure [0, 1] x [0, 1] x [0, 2pi]
+            x_bounded = apply_periodic_boundary(x, wrap_dims=wrap_dims)
 
             edge_index, edge_attr = compute_graph(
                 x_bounded,
                 method=cluster_method,
                 p=p,
                 use_distance=use_distance,
-                use_relative_encoding=use_relative_encoding,
+                use_rel_pos=use_rel_pos,
+                boundary_type=boundary_type,
                 device=device,
             )
-            label = (y - x_bounded).T.to(device)
-            if use_derivatives:
-                N = x[0].shape[0]
-                simulation = LennardJonesSimulation(
-                    N=N,
-                    v0=0.1,
-                    L_box=1.0,
-                    delta_t=0.1,
-                    rot_couple=0,
-                    sigma=0.025,
-                    rot_rate=1,
-                    timesteps=200,
-                    periodic=True,
-                )
-                derivatives = torch.tensor(simulation.particle_system(t, y.numpy().T.reshape(N*3)).reshape(N, 3).T, dtype=dtype)
-                label = derivatives.T
-
-            if use_relative_encoding:
-                data = Data(
-                    x=x_bounded[2].unsqueeze(0).T.to(device),
-                    y=label,
-                    edge_index=edge_index.to(device),
-                    edge_attr=edge_attr.to(device),
-                )
-
+            if target_vel:
+                if stats is not None:
+                    vel = y - x_bounded
+                    vel[:2] = (vel[:2] - stats["vel_mean"]) / stats["vel_std"]
+                    label = vel[:2].T.to(device).to(dtype=dtype)
+                else:
+                    label = (y - x_bounded).T.to(device).to(dtype=dtype)
             else:
-                data = Data(
-                    x=x_bounded.T.to(device),
-                    y=label,
-                    edge_index=edge_index.to(device),
-                    edge_attr=edge_attr.to(device),
-                )
+                label = y[:2].T
+
+            if use_pos:
+                data_input = x_bounded[:2].T.to(device).to(dtype=dtype)
+            else:
+                data_input = x_bounded[2].unsqueeze(0).T.to(device).to(dtype=dtype)
+
+            data = Data(
+                x=data_input,
+                y=label,
+                edge_index=edge_index.to(device),
+                edge_attr=edge_attr.to(device).to(dtype=dtype),
+                pos=x_bounded[:2].T.to(device).to(dtype=dtype),
+                trajectory=apply_periodic_boundary(sim[t + 1 : t + 21]).permute(
+                    2, 0, 1
+                ),
+                full_x=x_bounded.T.to(device).to(dtype=dtype),
+                particle_type=particle_type,
+            )
 
             data_pairs.append(data)
 
@@ -152,7 +185,7 @@ def continuous_simulation(
     cluster_method: Optional[str] = "radius",
     p: Optional[int] = 0.1,
     use_distance: Optional[bool] = False,
-    dtype: Optional[torch.dtype] = torch.float,
+    dtype: Optional[torch.dtype] = torch.double,
     device: Optional[str | torch.device] = "cpu",
 ) -> List:
     """
@@ -221,9 +254,10 @@ def compute_graph(
     x: torch.Tensor,
     method: str,
     p: float | int,
-    use_distance: bool,
-    use_relative_encoding: Optional[bool] = False,
+    use_distance: Optional[bool] = False,
+    use_rel_pos: Optional[bool] = False,
     box_length: Optional[float] = 1,
+    boundary_type: Optional[Tuple] = None,
     device: Optional[str | torch.device] = "cpu",
 ) -> Tuple[torch.Tensor, torch.Tensor]:
     """
@@ -247,6 +281,12 @@ def compute_graph(
     edge_attr: torch.Tensor
         Edge features, shape (E, 1).
     """
+    if boundary_type is None:
+        boundary_type = (
+            BoundaryType.PERIODIC,
+            BoundaryType.PERIODIC,
+            BoundaryType.PERIODIC,
+        )
 
     xy, _theta = x[:-1], x[-1]
     xy = xy.transpose(0, 1)
@@ -257,8 +297,10 @@ def compute_graph(
         dx = x_coords.unsqueeze(1) - x_coords.unsqueeze(0)
         dy = y_coords.unsqueeze(1) - y_coords.unsqueeze(0)
 
-        dx = dx - box_length*torch.round(dx/box_length)
-        dy = dy - box_length*torch.round(dy/box_length)
+        if boundary_type[0] == BoundaryType.PERIODIC:
+            dx = dx - box_length * torch.round(dx / box_length)
+        if boundary_type[1] == BoundaryType.PERIODIC:
+            dy = dy - box_length * torch.round(dy / box_length)
 
         distances = torch.sqrt(dx.pow(2) + dy.pow(2))
         edges = torch.where(distances < p)
@@ -271,8 +313,10 @@ def compute_graph(
         dx = x_coords.unsqueeze(1) - x_coords.unsqueeze(0)
         dy = y_coords.unsqueeze(1) - y_coords.unsqueeze(0)
 
-        dx = dx - torch.round(dx)
-        dy = dy - torch.round(dy)
+        if boundary_type[0] == BoundaryType.PERIODIC:
+            dx = dx - box_length * torch.round(dx / box_length)
+        if boundary_type[1] == BoundaryType.PERIODIC:
+            dy = dy - box_length * torch.round(dy / box_length)
 
         distances = torch.sqrt(dx.pow(2) + dy.pow(2))
         k = int(p)
@@ -282,24 +326,30 @@ def compute_graph(
         col_indices = indices.flatten()
         edge_index = torch.stack([row_indices, col_indices])
     else:
-        raise ValueError(
-            "Invalid method, must be either 'radius', 'knn', 'np_radius' or 'np_knn'."
-        )
+        raise ValueError("Invalid method, must be either 'radius' or 'knn'")
 
+    row, col = edge_index
+    rel_pos = xy[row] - xy[col]
+    if boundary_type[0] == BoundaryType.PERIODIC:
+        rel_pos[:, 0] = rel_pos[:, 0] - box_length * torch.round(
+            rel_pos[:, 0] / box_length
+        )
+    if boundary_type[1] == BoundaryType.PERIODIC:
+        rel_pos[:, 1] = rel_pos[:, 1] - box_length * torch.round(
+            rel_pos[:, 1] / box_length
+        )
+    rel_dist = torch.sum(rel_pos**2, dim=-1, keepdim=True)
+
+    features = []
     if use_distance:
-        row, col = edge_index
-        rel_pos_raw = xy[row] - xy[col]
-        rel_pos = rel_pos_raw - torch.round(rel_pos_raw)
-        rel_dist = torch.sum(rel_pos**2, dim=-1, keepdim=True)
-        edge_attr = rel_dist
-    elif use_relative_encoding:
-        row, col = edge_index
-        rel_pos_raw = xy[row] - xy[col]
-        rel_pos = rel_pos_raw - box_length*torch.round(rel_pos_raw/box_length)
-        rel_dist = torch.norm(rel_pos, dim=-1, keepdim=True)
-        edge_attr = torch.cat([rel_pos, rel_dist], dim=-1)
-    else:
-        edge_attr = torch.zeros(edge_index.shape[1], 0).to(device)  # Empty edges
+        features.append(rel_dist)
+    if use_rel_pos:
+        features.append(rel_pos)
+    edge_attr = (
+        torch.cat(features, dim=-1)
+        if features
+        else torch.zeros(edge_index.shape[1], 0).to(device)
+    )
 
     return edge_index, edge_attr
 
@@ -311,7 +361,7 @@ class ParticleDataset(Dataset):
     Parameters
     ----------
     data_pairs: List
-        List of (x, y, edge_index, edge_attr) samples.
+        List of PyG Data objects.
     """
 
     def __init__(self, data_pairs, transform=None, pre_transform=None):
