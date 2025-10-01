@@ -140,7 +140,7 @@ class AbsoluteGNS(nn.Module):
             dropout=dropout,
             out_activation=False,
         )
-        
+
         self.to(device)
 
     def forward(self, data):

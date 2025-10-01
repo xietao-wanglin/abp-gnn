@@ -25,8 +25,8 @@ model:
 train:
   lr: 1e-3
   weight_decay: 1e-8
-  batch_size: 32
-  n_steps: 20000
+  batch_size: 1000
+  n_steps: 10000
   checkpoint_every: 250
   log_steps: 1
   base_model_path: null

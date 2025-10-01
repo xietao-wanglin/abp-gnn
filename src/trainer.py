@@ -163,21 +163,25 @@ class Trainer:
                 .to(device=self.device)
             )
         elif model_type == "GNS":
-            model = GNS(
-                n_layers=self.cfg.model.n_layers,
-                in_node_nf=self.cfg.model.in_node_nf,
-                out_node_nf=self.cfg.model.out_node_nf,
-                in_edge_nf=self.cfg.model.in_edge_nf,
-                hidden_nf=self.cfg.model.hidden_nf,
-                encoder_depth=self.cfg.model.encoder_depth,
-                decoder_depth=self.cfg.model.decoder_depth,
-                edge_mlp_depth=self.cfg.model.edge_mlp_depth,
-                node_mlp_depth=self.cfg.model.node_mlp_depth,
-                device=self.device,
-                dropout=self.cfg.model.dropout,
-                norm=self.cfg.model.norm,
-                activation=self.get_activation(self.cfg.model.activation),
-            ).to(dtype=self.dtype).to(device=self.device)
+            model = (
+                GNS(
+                    n_layers=self.cfg.model.n_layers,
+                    in_node_nf=self.cfg.model.in_node_nf,
+                    out_node_nf=self.cfg.model.out_node_nf,
+                    in_edge_nf=self.cfg.model.in_edge_nf,
+                    hidden_nf=self.cfg.model.hidden_nf,
+                    encoder_depth=self.cfg.model.encoder_depth,
+                    decoder_depth=self.cfg.model.decoder_depth,
+                    edge_mlp_depth=self.cfg.model.edge_mlp_depth,
+                    node_mlp_depth=self.cfg.model.node_mlp_depth,
+                    device=self.device,
+                    dropout=self.cfg.model.dropout,
+                    norm=self.cfg.model.norm,
+                    activation=self.get_activation(self.cfg.model.activation),
+                )
+                .to(dtype=self.dtype)
+                .to(device=self.device)
+            )
         else:
             raise ValueError(f"Unknown model type: {model_type}")
         return model
