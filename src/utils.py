@@ -60,6 +60,7 @@ def discrete_simulation(
     use_rel_pos: Optional[bool] = False,
     target_vel: Optional[bool] = True,
     use_pos: Optional[bool] = False,
+    use_angle: Optional[bool] = True,
     boundary_type: Optional[Tuple] = None,
     stats: Optional[Dict] = None,
     dtype: Optional[torch.dtype] = torch.double,
@@ -155,97 +156,27 @@ def discrete_simulation(
             else:
                 label = y[:2].T
 
+            features = []
+
             if use_pos:
-                data_input = x_bounded[:2].T.to(device).to(dtype=dtype)
+                features.append(x_bounded[:2].T)
+            if use_angle:
+                features.append(x_bounded[2].unsqueeze(0).T)
+            if features:
+                data_input = torch.cat(features, dim=1)
             else:
-                data_input = x_bounded[2].unsqueeze(0).T.to(device).to(dtype=dtype)
+                batch_size = x_bounded.shape[1]
+                data_input = torch.ones(batch_size, 1, device=device, dtype=dtype)
 
             data = Data(
-                x=data_input,
+                x=data_input.to(device).to(dtype=dtype),
                 y=label,
                 edge_index=edge_index.to(device),
                 edge_attr=edge_attr.to(device).to(dtype=dtype),
-                pos=x_bounded[:2].T.to(device).to(dtype=dtype),
-                trajectory=apply_periodic_boundary(sim[t + 1 : t + 21]).permute(
-                    2, 0, 1
-                ),
-                full_x=x_bounded.T.to(device).to(dtype=dtype),
                 particle_type=particle_type,
             )
 
             data_pairs.append(data)
-
-    return data_pairs
-
-
-def continuous_simulation(
-    simulation_list: List,
-    times_list: List,
-    angle: bool,
-    cluster_method: Optional[str] = "radius",
-    p: Optional[int] = 0.1,
-    use_distance: Optional[bool] = False,
-    dtype: Optional[torch.dtype] = torch.double,
-    device: Optional[str | torch.device] = "cpu",
-) -> List:
-    """
-    Process multiple simulations for training.
-    Returns list of (input, target) pairs instead of concatenated tensors.
-
-    Parameters
-    ----------
-    simulation_list: List
-        List of simulation arrays, each of shape (timesteps, 3, N) where N can vary between simulations.
-    n_samples: int, optional
-        Number of random samples to pick when `subset=True`.
-    cluster_method: str, optional
-        Method used to create edges in graph, either 'radius' or 'knn', default is 'radius'.
-    p: float or int, optional
-        Parameter of `cluster_method`, default is 0.1.
-    dtype : torch.dtype
-        Data type for conversion, default is torch.float.
-    device: str or torch.device, optional
-        Either 'cpu', 'cuda' or torch.device instance, default is 'cpu'.
-
-    Returns
-    -------
-    data_pairs: List
-        [(x1, y1, edge_index1, edge_attr1), (x2, y2, edge_index2, edge_attr2), ...]
-        where each x and y represents one timestep pair from any simulation.
-    """
-    data_pairs = []
-    assert len(simulation_list) == len(times_list), (
-        "Must have equal amounts of simulations and times"
-    )
-
-    for idx in range(len(simulation_list)):
-        sim = simulation_list[idx]
-        times = times_list[idx]
-
-        if not torch.is_tensor(sim):
-            sim = torch.tensor(sim, dtype=dtype, device=device)
-        if not torch.is_tensor(times):
-            times = torch.tensor(times, dtype=dtype, device=device)
-
-        x = sim[0]  # Features
-        # Labels
-        if angle:
-            y = sim[1:]
-        else:
-            y = sim[1:][:, :2, :]
-        t = times[1:]  # Collocation times
-
-        edge_index, edge_attr = compute_graph(
-            x, method=cluster_method, p=p, device=device, use_distance=use_distance
-        )
-        data = Data(
-            x=x.T.to(device),
-            y=y.permute(0, 2, 1).to(device),
-            t=t.to(device),
-            edge_index=edge_index.to(device),
-            edge_attr=edge_attr.to(device),
-        )
-        data_pairs.append(data)
 
     return data_pairs
 
