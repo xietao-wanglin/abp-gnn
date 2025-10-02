@@ -287,9 +287,19 @@ class Trainer:
                     boundary_type=self.cfg.data.boundary_type,
                     device=self.device,
                 )
+                features = []
 
+                if self.cfg.data.features.use_pos:
+                    features.append(x_bounded[:2].T)
+                if self.cfg.data.features.use_angle:
+                    features.append(x_bounded[2].unsqueeze(0).T)
+                if features:
+                    data_input = torch.cat(features, dim=1)
+                else:
+                    batch_size = x_bounded.shape[1]
+                    data_input = torch.ones(batch_size, 1, device=self.device, dtype=self.dtype)
                 data = Data(
-                    x=x_bounded[:2].T, edge_index=edge_index, edge_attr=edge_attr
+                    x=data_input, edge_index=edge_index, edge_attr=edge_attr
                 )
                 batch_data_list.append(data)
 
