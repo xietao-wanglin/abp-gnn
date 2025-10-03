@@ -306,10 +306,13 @@ class Trainer:
             batched_data = Batch.from_data_list(batch_data_list).to(self.device)
 
             with torch.no_grad():
-                batched_pred = (
-                    self.model(batched_data) * self.metadata["vel_std"]
-                    + self.metadata["vel_mean"]
-                )
+                if not self.cfg.data.features.target_vel:
+                    batched_pred = self.model(batched_data)
+                else:
+                    batched_pred = (
+                        self.model(batched_data) * self.metadata["vel_std"]
+                        + self.metadata["vel_mean"]
+                    )
 
             start_idx = 0
             for traj_idx in range(num_trajectories):
@@ -322,10 +325,14 @@ class Trainer:
                     torch.ones(N_i, 1, device=self.device, dtype=self.dtype)
                     * self.metadata["angular_mean"]
                 )
-                full_vel_pred = torch.cat([vel_pred, theta_vel], dim=-1)
 
                 current_state = predictions[traj_idx][t].clone()
+                if not self.cfg.data.features.target_vel:
+                    theta_vel = theta_vel + current_state[2].unsqueeze(0).T
+                full_vel_pred = torch.cat([vel_pred, theta_vel], dim=-1)
                 next_state = current_state + full_vel_pred.T
+                if not self.cfg.data.features.target_vel:
+                    next_state = full_vel_pred.T
 
                 predictions[traj_idx][t + 1] = apply_periodic_boundary(next_state)
 
