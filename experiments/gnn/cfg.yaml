@@ -49,5 +49,5 @@ data:
     use_rel_pos: false
     use_pos: true
     use_angle: true
-    target_vel: true
+    target_vel: false
   boundary_type: [1, 1, 1]
