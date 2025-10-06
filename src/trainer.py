@@ -297,39 +297,55 @@ class Trainer:
                     data_input = torch.cat(features, dim=1)
                 else:
                     batch_size = x_bounded.shape[1]
-                    data_input = torch.ones(batch_size, 1, device=self.device, dtype=self.dtype)
-                data = Data(
-                    x=data_input, edge_index=edge_index, edge_attr=edge_attr
-                )
+                    data_input = torch.ones(
+                        batch_size, 1, device=self.device, dtype=self.dtype
+                    )
+                data = Data(x=data_input, edge_index=edge_index, edge_attr=edge_attr)
                 batch_data_list.append(data)
 
             batched_data = Batch.from_data_list(batch_data_list).to(self.device)
 
             with torch.no_grad():
+                forward_pass = self.model(batched_data)
                 if not self.cfg.data.features.target_vel:
-                    batched_pred = self.model(batched_data)
+                    batched_pred = forward_pass
                 else:
-                    batched_pred = (
-                        self.model(batched_data) * self.metadata["vel_std"]
-                        + self.metadata["vel_mean"]
-                    )
+                    if self.metadata["angular_std"] > 0:
+                        batched_vel_pred = (
+                            forward_pass[:, :2] * self.metadata["vel_std"]
+                            + self.metadata["vel_mean"]
+                        )
+                        batched_theta_vel_pred = (
+                            forward_pass[:, 2] * self.metadata["angular_std"]
+                            + self.metadata["angular_mean"]
+                        )
+                        batched_pred = torch.cat(
+                            [batched_vel_pred, batched_theta_vel_pred.unsqueeze(1)],
+                            dim=1,
+                        )
+                    else:
+                        batched_pred = (
+                            forward_pass * self.metadata["vel_std"]
+                            + self.metadata["vel_mean"]
+                        )
 
             start_idx = 0
             for traj_idx in range(num_trajectories):
                 N_i = trajectory_sizes[traj_idx]
                 end_idx = start_idx + N_i
-
-                vel_pred = batched_pred[start_idx:end_idx]
-
-                theta_vel = (
-                    torch.ones(N_i, 1, device=self.device, dtype=self.dtype)
-                    * self.metadata["angular_mean"]
-                )
-
+                
+                traj_pred = batched_pred[start_idx:end_idx]
                 current_state = predictions[traj_idx][t].clone()
-                if not self.cfg.data.features.target_vel:
-                    theta_vel = theta_vel + current_state[2].unsqueeze(0).T
-                full_vel_pred = torch.cat([vel_pred, theta_vel], dim=-1)
+                if not self.metadata["angular_std"] > 0:
+                    theta_vel = (
+                        torch.ones(N_i, 1, device=self.device, dtype=self.dtype)
+                        * self.metadata["angular_mean"]
+                    )
+                    if not self.cfg.data.features.target_vel:
+                        theta_vel = theta_vel + current_state[2].unsqueeze(0).T
+                    full_vel_pred = torch.cat([traj_pred, theta_vel], dim=-1)
+                else:
+                    full_vel_pred = traj_pred
                 next_state = current_state + full_vel_pred.T
                 if not self.cfg.data.features.target_vel:
                     next_state = full_vel_pred.T

@@ -1,14 +1,14 @@
-from src.simulation import Toy
+from src.simulation import WCA
 
 import numpy as np
 
 
 def generate_state(n, n_passive, n_boundary, box_length=1.0):
-    rot_rate = np.ones(n) * 0.0
+    rot_rate = np.ones(n) * 1
     rot_rate[:n_passive] = np.zeros(n_passive)
     v0 = np.ones(n) * 0.1
     v0[:n_passive] = np.zeros(n_passive)
-    rot_couple = np.zeros(n)
+    rot_couple = np.ones(n) * 0.1
     particle_type = np.ones(n, dtype=int)
     particle_type[:n_boundary] = 0
 
@@ -31,18 +31,18 @@ if __name__ == "__main__":
     np.random.seed(12)
     box_length = 1
     rot_rate, v0, rot_couple, particle_type, initial_state = generate_state(
-        n=40, n_passive=0, n_boundary=0, box_length=box_length
+        n=100, n_passive=0, n_boundary=0, box_length=box_length
     )
 
-    sim = Toy(
+    sim = WCA(
         initial_state=initial_state,
         v0=v0,
         box_length=box_length,
         delta_t=0.1,
         rot_couple=rot_couple,
         particle_type=particle_type,
-        epsilon=0.025,
         rot_rate=rot_rate,
+        sigma=0.03,
         timesteps=200,
         boundary_type=(1, 1, 1),
         diffusion_r=0.0,
