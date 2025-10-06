@@ -10,6 +10,7 @@ def main():
     args = parser.parse_args()
 
     base_cfg = OmegaConf.load(args.config)
+    wandb.login()
     wandb.init(
         project="ABP_GNN",
         name=base_cfg.wandb.name,
