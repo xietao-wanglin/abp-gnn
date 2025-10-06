@@ -151,6 +151,9 @@ def discrete_simulation(
                     vel = y - x_bounded
                     vel[:2] = (vel[:2] - stats["vel_mean"]) / stats["vel_std"]
                     label = vel[:2].T.to(device).to(dtype=dtype)
+                    if stats["angular_std"] > 0:
+                        vel[2] = (vel[2] - stats["angular_mean"]) / stats["angular_std"]
+                        label = vel.T.to(device).to(dtype=dtype)
                 else:
                     label = (y - x_bounded).T.to(device).to(dtype=dtype)
             else:
