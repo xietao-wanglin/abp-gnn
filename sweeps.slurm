@@ -8,4 +8,4 @@
 export TQDM_DISABLE=1
 module load GCCcore/13.2.0 Python/3.11.5
 
-srun wandb agent xietao-wang-lin-university-of-warwick/abp-gnn/qjzptihp
+srun wandb agent xietao-wang-lin-university-of-warwick/abp-gnn/tfw82obf
