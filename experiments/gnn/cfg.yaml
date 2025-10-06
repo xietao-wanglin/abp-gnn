@@ -9,15 +9,15 @@ wandb:
 
 model:
   name: "GNN"
-  n_layers: 4
+  n_layers: 2
   in_node_nf: 3
   out_node_nf: 2
   in_edge_nf: 0
   hidden_nf: 64
-  encoder_depth: 2
-  decoder_depth: 3
-  edge_mlp_depth: 2
-  node_mlp_depth: 2
+  encoder_depth: 1
+  decoder_depth: 1
+  edge_mlp_depth: 1
+  node_mlp_depth: 1
   dropout: 0.0
   norm: false
   activation: "silu"
@@ -49,5 +49,5 @@ data:
     use_rel_pos: false
     use_pos: true
     use_angle: true
-    target_vel: false
+    target_vel: true
   boundary_type: [1, 1, 1]
