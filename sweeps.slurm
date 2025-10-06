@@ -8,6 +8,6 @@
 export TQDM_DISABLE=1
 module load GCCcore/13.2.0 Python/3.11.5
 
-wandb login $WANDB_API_KEY
+python -m wandb login $WANDB_API_KEY
 
 srun wandb agent xietao-wang-lin-university-of-warwick/abp-gnn/tfw82obf
