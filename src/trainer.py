@@ -135,6 +135,10 @@ class Trainer:
     def get_activation(self, name):
         if name == "silu":
             return nn.SiLU()
+        elif name == "relu":
+            return nn.ReLU()
+        elif name == "tanh":
+            return nn.Tanh()
         elif name == "linear":
             return nn.Identity()
         else:
@@ -333,7 +337,7 @@ class Trainer:
             for traj_idx in range(num_trajectories):
                 N_i = trajectory_sizes[traj_idx]
                 end_idx = start_idx + N_i
-                
+
                 traj_pred = batched_pred[start_idx:end_idx]
                 current_state = predictions[traj_idx][t].clone()
                 if not self.metadata["angular_std"] > 0:
