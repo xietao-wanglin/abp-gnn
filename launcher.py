@@ -4,11 +4,11 @@ import numpy as np
 
 
 def generate_state(n, n_passive, n_boundary, box_length=1.0):
-    rot_rate = np.ones(n) * 1
+    rot_rate = np.ones(n) * 0
     rot_rate[:n_passive] = np.zeros(n_passive)
     v0 = np.ones(n) * 0.1
     v0[:n_passive] = np.zeros(n_passive)
-    rot_couple = np.ones(n) * 0.1
+    rot_couple = np.ones(n) * 0
     particle_type = np.ones(n, dtype=int)
     particle_type[:n_boundary] = 0
 
@@ -31,22 +31,22 @@ if __name__ == "__main__":
     np.random.seed(12)
     box_length = 1
     rot_rate, v0, rot_couple, particle_type, initial_state = generate_state(
-        n=100, n_passive=0, n_boundary=0, box_length=box_length
+        n=50, n_passive=0, n_boundary=0, box_length=box_length
     )
 
     sim = WCA(
         initial_state=initial_state,
         v0=v0,
         box_length=box_length,
-        delta_t=0.1,
+        delta_t=0.001,
         rot_couple=rot_couple,
         particle_type=particle_type,
         rot_rate=rot_rate,
-        sigma=0.03,
-        timesteps=200,
+        sigma=0.04,
+        timesteps=20000,
         boundary_type=(1, 1, 1),
-        diffusion_r=0.0,
-        diffusion_t=0.0,
+        diffusion_r=0.001,
+        diffusion_t=0.001,
     )
     sim.solve_dynamics(method="RK45", debug=True)
-    sim.create_animation(every=1)
+    sim.create_animation(every=100)

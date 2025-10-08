@@ -1,4 +1,4 @@
-from src.simulation import LennardJonesSimulation
+from src.simulation import WCA
 from src.utils import apply_periodic_boundary
 
 import torch
@@ -11,15 +11,12 @@ import json
 
 
 def generate_state(n, box_length=1.0):
+    delta_t = 0.001
     rot_rate = np.ones(n) * 0
-    v0 = np.ones(n) * 0.1
-    rot_couple = np.zeros(n)
-    sigma = 0.01
-    epsilon = 0.1
-    law_power = 6
-    noise_t = 0
-    noise_d = 4
-    boundary_type = (1, 1, 1)
+    rot_couple = np.ones(n) * 0
+    sigma = 0.04
+    diffusion_r = 0.001
+    diffusion_t = 0.001
 
     initial_state = np.random.random(3 * n)
     initial_state[2::3] *= 2 * np.pi
@@ -29,15 +26,12 @@ def generate_state(n, box_length=1.0):
     initial_state = initial_state.reshape(n, 3).T
 
     return (
+        delta_t,
         rot_rate,
-        v0,
         rot_couple,
         sigma,
-        epsilon,
-        law_power,
-        noise_t,
-        noise_d,
-        boundary_type,
+        diffusion_r,
+        diffusion_t,
         initial_state,
     )
 
@@ -77,112 +71,91 @@ if __name__ == "__main__":
 
     for i in tqdm(range(train_init, train_sims + train_init), desc="Training Set"):
         np.random.seed(i)
-        n = np.random.randint(15, 30)
+        n = np.random.randint(30, 50)
         (
+            delta_t,
             rot_rate,
-            v0,
             rot_couple,
             sigma,
-            epsilon,
-            law_power,
-            noise_t,
-            noise_d,
-            boundary_type,
+            diffusion_r,
+            diffusion_t,
             initial_state,
         ) = generate_state(n=n)
-        sim = LennardJonesSimulation(
-            v0=v0,
+        sim = WCA(
+            delta_t=delta_t,
             rot_couple=rot_couple,
             rot_rate=rot_rate,
-            timesteps=1000,
+            diffusion_r=diffusion_r,
+            diffusion_t=diffusion_t,
+            timesteps=10000,
             sigma=sigma,
-            epsilon=epsilon,
-            law_power=law_power,
-            attr_strength=0,
             seed=i,
             initial_state=initial_state,
-            noise_t=noise_t,
-            noise_d=noise_d,
-            boundary_type=boundary_type,
         )
         sim.solve_dynamics(method="RK45")
-        _times, loc = sim.get_solution_abs(every=10)
+        _times, loc = sim.get_solution_abs(every=100)
         np.save(f"{script_dir}/{data_folder}/simulation_train_{i}.npy", loc[10:])
 
     for i in tqdm(range(test_init, test_sims + test_init), desc="Test Set"):
         np.random.seed(98743 * i + 4500)
-        n = np.random.randint(15, 30)
+        n = np.random.randint(30, 50)
         (
+            delta_t,
             rot_rate,
-            v0,
             rot_couple,
             sigma,
-            epsilon,
-            law_power,
-            noise_t,
-            noise_d,
-            boundary_type,
+            diffusion_r,
+            diffusion_t,
             initial_state,
         ) = generate_state(n=n)
-        sim = LennardJonesSimulation(
-            v0=v0,
+        sim = WCA(
+            delta_t=delta_t,
             rot_couple=rot_couple,
             rot_rate=rot_rate,
-            timesteps=1000,
+            diffusion_r=diffusion_r,
+            diffusion_t=diffusion_t,
+            timesteps=10000,
             sigma=sigma,
-            epsilon=epsilon,
-            law_power=law_power,
-            attr_strength=0,
             seed=98743 * i + 4500,
             initial_state=initial_state,
-            noise_t=noise_t,
-            noise_d=noise_d,
-            boundary_type=boundary_type,
         )
         sim.solve_dynamics(method="RK45")
-        _times, loc = sim.get_solution_abs(every=10)
+        _times, loc = sim.get_solution_abs(every=100)
         np.save(f"{script_dir}/{data_folder}/simulation_test_{i}.npy", loc[10:])
 
     for i in tqdm(range(long_test_sims), desc="Long Test Set"):
         np.random.seed(983 * i + 2000)
-        n = np.random.randint(60, 120)
+        n = np.random.randint(45, 70)
         (
+            delta_t,
             rot_rate,
-            v0,
             rot_couple,
             sigma,
-            epsilon,
-            law_power,
-            noise_t,
-            noise_d,
-            boundary_type,
+            diffusion_r,
+            diffusion_t,
             initial_state,
         ) = generate_state(n=n)
-        sim = LennardJonesSimulation(
-            v0=v0,
+        sim = WCA(
+            delta_t=delta_t,
             rot_couple=rot_couple,
             rot_rate=rot_rate,
+            diffusion_r=diffusion_r,
+            diffusion_t=diffusion_t,
             sigma=sigma,
-            epsilon=epsilon,
-            law_power=law_power,
-            attr_strength=0,
-            timesteps=400,
+            timesteps=40000,
             seed=983 * i + 2000,
             initial_state=initial_state,
-            noise_t=noise_t,
-            noise_d=noise_d,
-            boundary_type=boundary_type,
         )
         sim.solve_dynamics(method="RK45")
-        _times, loc = sim.get_solution_abs(every=10)
+        _times, loc = sim.get_solution_abs(every=100)
         np.save(f"{script_dir}/{data_folder}/simulation_long_test_{i}.npy", loc[10:])
 
-    vel_mean, vel_std = compute_stats(script_dir)
+    vel_mean, vel_std, angular_mean, angular_std = compute_stats(script_dir)
     stats = {
         "vel_mean": vel_mean,
         "vel_std": vel_std,
-        "angular_mean": 0,
-        "angular_std": 0,
+        "angular_mean": angular_mean,
+        "angular_std": angular_std,
     }
     metadata_path = os.path.join(script_dir, "metadata.json")
     with open(metadata_path, "w") as f:
