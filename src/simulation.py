@@ -467,6 +467,175 @@ class Toy(BaseSimulation):
         return derivative.T.reshape(3 * self.n)
 
 
+class AVM(BaseSimulation):
+    """
+    Anticipation Velocity Model (AVM)
+    with collision-free speed control.
+
+    Reference:
+        Xu, Q., Chraibi, M., Seyfried, A. (2021)
+        "Anticipation in a velocity-based model for pedestrian dynamics"
+        Transportation Research Part C, 133 (2021) 103464
+    """
+
+    def __init__(
+        self,
+        initial_state,
+        v0=None,  # free speed (m/s)
+        tau=0.3,  # relaxation time (s)
+        T=1.06,  # time gap for speed-headway relation (s)
+        D=0.1,  # range parameter (m)
+        k=3.0,  # alignment/following strength
+        t_a=1.0,  # anticipation time (s)
+        r=0.18,  # agent radius (m)
+        diffusion_t=0.0,
+        diffusion_r=0.0,
+        motility=1,
+        particle_type=None,
+        box_length=1.0,
+        timesteps=100,
+        delta_t=0.1,
+        boundary_type=None,
+        seed=0,
+    ):
+        super().__init__(
+            initial_state,
+            v0=v0,
+            diffusion_t=diffusion_t,
+            diffusion_r=diffusion_r,
+            motility=motility,
+            particle_type=particle_type,
+            box_length=box_length,
+            timesteps=timesteps,
+            delta_t=delta_t,
+            boundary_type=boundary_type,
+            seed=seed,
+        )
+
+        # AVM-specific parameters
+        self.tau = tau
+        self.T = T
+        self.D = D
+        self.k = k
+        self.t_a = t_a
+        self.r = r
+
+        # Desired directions (e0_i) are given by initial heading angles
+        self.e0 = np.vstack(
+            [np.cos(self.positions[0][2]), np.sin(self.positions[0][2])]
+        ).T
+
+    def _unit_vectors(self, theta):
+        """Convert heading angle θ → unit vector e = (cosθ, sinθ)."""
+        return np.vstack([np.cos(theta), np.sin(theta)]).T
+
+    def _apply_periodic_wrapping(self, dx, dy):
+        """Apply periodic boundary conditions to dx, dy."""
+        if self.boundary_type[0] == BoundaryType.PERIODIC:
+            dx -= self.box_length * np.round(dx / self.box_length)
+        if self.boundary_type[1] == BoundaryType.PERIODIC:
+            dy -= self.box_length * np.round(dy / self.box_length)
+        return dx, dy
+
+    def particle_system(self, t, positions):
+        """
+        Implements the full AVM:
+          - Anticipation-based direction control (Eqs. 1–7)
+          - Collision-free speed control (Eqs. 8–10)
+        """
+        positions = positions.reshape(self.n, 3).T
+        x = positions[0]
+        y = positions[1]
+        theta = positions[2]
+
+        # Current direction vectors e_i
+        e = self._unit_vectors(theta)
+
+        # --- Anticipation phase: predicted positions ---
+        x_pred = x + self.v0 * e[:, 0] * self.t_a
+        y_pred = y + self.v0 * e[:, 1] * self.t_a
+
+        # Apply periodic boundary adjustments
+        x_pred %= self.box_length
+        y_pred %= self.box_length
+
+        # Pairwise predicted displacements
+        dx = x_pred[:, None] - x_pred[None, :]
+        dy = y_pred[:, None] - y_pred[None, :]
+        dx, dy = self._apply_periodic_wrapping(dx, dy)
+
+        dist = np.sqrt(dx**2 + dy**2) + 1e-9
+        eij = np.stack([dx / dist, dy / dist], axis=-1)
+
+        # --- Directional dependency α_ij ---
+        dot_e0_ej = np.clip(np.dot(self.e0, e.T), -1, 1)
+        alpha = self.k * (1 + (1 - dot_e0_ej) / 2)
+
+        # --- Predicted distance s^a_ij (Eq. 2) ---
+        sa_ij = np.maximum(2 * self.r, (dx * eij[..., 0] + dy * eij[..., 1]))
+
+        # --- Interaction strength R_ij (Eq. 3) ---
+        R_ij = alpha * np.exp((2 * self.r - sa_ij) / self.D)
+
+        # --- Avoidance direction n_ij (Eq. 5) ---
+        e0_perp = np.stack([-self.e0[:, 1], self.e0[:, 0]], axis=1)
+        sign_term = np.sign(
+            np.einsum(
+                "ij,ij->i",
+                eij.reshape(self.n * self.n, 2),
+                np.repeat(e0_perp, self.n, axis=0),
+            )
+        ).reshape(self.n, self.n)
+        n_ij = -sign_term[..., None] * e0_perp[:, None, :]
+
+        # --- Combined directional response (Eq. 6) ---
+        R_sum = np.sum(R_ij[..., None] * n_ij, axis=1)
+        e_d = self.e0 + R_sum
+        e_d /= np.linalg.norm(e_d, axis=1)[:, None]
+
+        # --- Direction evolution ODE (Eq. 7) ---
+        de_dt = (e_d - e) / self.tau
+
+        # --- Collision-free speed control (Eqs. 8–10) ---
+        # Compute forward neighbors (same as Eq. 8)
+        dx_curr = x[:, None] - x[None, :]
+        dy_curr = y[:, None] - y[None, :]
+        dx_curr, dy_curr = self._apply_periodic_wrapping(dx_curr, dy_curr)
+        dist_curr = np.sqrt(dx_curr**2 + dy_curr**2) + 1e-9
+        eij_curr = np.stack([dx_curr / dist_curr, dy_curr / dist_curr], axis=-1)
+
+        forward_mask = (
+            np.einsum(
+                "ij,ij->i",
+                np.repeat(e, self.n, axis=0),
+                eij_curr.reshape(self.n * self.n, 2),
+            ).reshape(self.n, self.n)
+            >= 0
+        )
+        lateral_mask = np.abs(np.dot(e[:, None, :], eij_curr.transpose(0, 2, 1))) <= 1
+        J_mask = forward_mask & lateral_mask & (dist_curr > 0)
+
+        # Minimum forward distance to avoid overlap (Eq. 9)
+        s_i = np.zeros(self.n)
+        for i in range(self.n):
+            valid = np.where(J_mask[i])[0]
+            if len(valid) > 0:
+                s_i[i] = np.min(dist_curr[i, valid] - 2 * self.r)
+            else:
+                s_i[i] = np.inf
+
+        # Final speed (Eq. 10)
+        v = np.minimum(self.v0, np.maximum(0.0, s_i / self.T))
+
+        # --- Kinematic ODEs ---
+        dxdt = v * e[:, 0]
+        dydt = v * e[:, 1]
+        dthetadt = np.cross(e, de_dt)  # scalar angular velocity (z-component)
+
+        derivative = np.vstack([dxdt, dydt, dthetadt])
+        return derivative.T.reshape(3 * self.n)
+
+
 def set_param(param, n, default):
     if param is None:
         return np.ones(n) * default
