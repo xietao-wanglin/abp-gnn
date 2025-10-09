@@ -87,8 +87,26 @@ class Trainer:
             for f in val_glob
         ]
 
+        particle_type_train_glob = sorted(
+            glob(f"{self.script_dir}/../../datasets/{dataset}/data/particle_train_*")
+        )
+        particle_type_test_glob = sorted(
+            glob(f"{self.script_dir}/../../datasets/{dataset}/data/particle_test_*")
+        )
+        if particle_type_train_glob:
+            self.train_particle_type = [
+                np.load(particle_type) for particle_type in particle_type_train_glob
+            ]
+            self.test_particle_type = [
+                np.load(particle_type) for particle_type in particle_type_test_glob
+            ]
+        else:
+            self.train_particle_type = None
+            self.test_particle_type = None
+
         data_pairs_train = discrete_simulation(
             self.train_simulations,
+            particle_type_list=self.train_particle_type,
             subset=self.cfg.data.subset,
             subset_samples=self.cfg.data.subset_samples,
             cluster_method=self.cfg.data.cluster.method,
@@ -104,6 +122,7 @@ class Trainer:
         )
         data_pairs_val = discrete_simulation(
             self.val_simulations,
+            particle_type_list=self.test_particle_type,
             subset=self.cfg.data.subset,
             subset_samples=self.cfg.data.subset_samples,
             cluster_method=self.cfg.data.cluster.method,
@@ -181,6 +200,8 @@ class Trainer:
                     device=self.device,
                     dropout=self.cfg.model.dropout,
                     norm=self.cfg.model.norm,
+                    num_particle_types=self.cfg.model.n_particle_types,
+                    particle_type_embedding_size=self.cfg.model.particle_embedding,
                     activation=self.get_activation(self.cfg.model.activation),
                 )
                 .to(dtype=self.dtype)
@@ -218,7 +239,8 @@ class Trainer:
     def train_step(self, batch):
         batch = batch.to(self.device)
         y = batch.y
-        pred = self.model(batch)
+        particle_type = getattr(batch, "particle_type", None)
+        pred = self.model(batch, particle_type)
         loss = self.criterion(pred, y)
         metric = self.metric(pred, y)
         self.optimizer.zero_grad()
@@ -232,7 +254,8 @@ class Trainer:
     def val_step(self, batch):
         batch = batch.to(self.device)
         y = batch.y
-        pred = self.model(batch)
+        particle_type = getattr(batch, "particle_type", None)
+        pred = self.model(batch, particle_type)
         loss = self.criterion(pred, y)
         metric = self.metric(pred, y)
         return loss, metric
@@ -240,7 +263,16 @@ class Trainer:
     def prepare_test(self, timesteps):
         initial_states = []
         ground_truths = []
-        for sim in self.val_simulations:
+        particle_types = []
+        for sim_idx, sim in enumerate(self.val_simulations):
+            if self.test_particle_type is not None:
+                p_type = torch.tensor(
+                    self.test_particle_type[sim_idx],
+                    device=self.device,
+                    dtype=torch.long,
+                )
+            else:
+                p_type = None
             for t in timesteps:
                 x_init = sim[t]
                 x_bounded = apply_periodic_boundary(x_init)
@@ -248,9 +280,11 @@ class Trainer:
 
                 gt_trajectory = apply_periodic_boundary(sim[t + 1 : t + 21])
                 ground_truths.append(gt_trajectory)
+                particle_types.append(p_type)
 
         self.initial_states = initial_states
         self.ground_truths = ground_truths
+        self.particle_types = particle_types
         self.rollout_length = len(ground_truths[0])
 
         return len(initial_states)
@@ -274,6 +308,7 @@ class Trainer:
         for t in range(self.rollout_length):
             batch_data_list = []
             trajectory_sizes = []
+            particle_types = []
 
             for traj_idx in range(num_trajectories):
                 x = predictions[traj_idx][t].clone()
@@ -307,10 +342,23 @@ class Trainer:
                 data = Data(x=data_input, edge_index=edge_index, edge_attr=edge_attr)
                 batch_data_list.append(data)
 
+                if self.particle_types[traj_idx] is not None:
+                    particle_types.append(self.particle_types[traj_idx])
+                else:
+                    particle_types.append(None)
+
             batched_data = Batch.from_data_list(batch_data_list).to(self.device)
+            batched_particle_type = (
+                torch.cat([pt for pt in particle_types if pt is not None])
+                if particle_types[0] is not None
+                else None
+            )
 
             with torch.no_grad():
-                forward_pass = self.model(batched_data)
+                if batched_particle_type is not None:
+                    forward_pass = self.model(batched_data, batched_particle_type)
+                else:
+                    forward_pass = self.model(batched_data)
                 if not self.cfg.data.features.target_vel:
                     batched_pred = forward_pass
                 else:
@@ -340,7 +388,7 @@ class Trainer:
 
                 traj_pred = batched_pred[start_idx:end_idx]
                 current_state = predictions[traj_idx][t].clone()
-                if not self.metadata["angular_std"] > 0:
+                if not (self.metadata["angular_std"] > 0):
                     theta_vel = (
                         torch.ones(N_i, 1, device=self.device, dtype=self.dtype)
                         * self.metadata["angular_mean"]

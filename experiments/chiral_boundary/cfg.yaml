@@ -1,9 +1,9 @@
 seed: 1
 
-dataset: "chiral"
+dataset: "chiral_boundary"
 
 wandb:
-  name: "chiral"
+  name: "chiral_boundary"
   track_gradients: true
   gradients_every: 125
 
@@ -20,6 +20,8 @@ model:
   node_mlp_depth: 2
   dropout: 0.0
   norm: false
+  n_particle_types: 2
+  particle_embedding: 16
   activation: "silu"
 
 train:
