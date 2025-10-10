@@ -8,3 +8,4 @@ scipy
 wandb
 omegaconf
 pandas
+nflows
