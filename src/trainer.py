@@ -1,5 +1,5 @@
 from src.models.gnn import GNN
-from src.models.gns import GNS
+from src.models.gns import GNS, StochasticGNS
 from src.utils import (
     discrete_simulation,
     ParticleDataset,
@@ -45,6 +45,8 @@ class Trainer:
         self.load_data(self.cfg.dataset)
         self.prepare_test(self.cfg.data.subset_samples)
         self.model = self.create_model()
+
+        self.stochastic = getattr(self.model, "stochastic", False)
 
         num_params = sum(p.numel() for p in self.model.parameters())
         wandb.config.update(
@@ -207,6 +209,27 @@ class Trainer:
                 .to(dtype=self.dtype)
                 .to(device=self.device)
             )
+        elif model_type == "S-GNS":
+            model = (
+                StochasticGNS(
+                    n_layers=self.cfg.model.n_layers,
+                    in_node_nf=self.cfg.model.in_node_nf,
+                    out_node_nf=self.cfg.model.out_node_nf,
+                    in_edge_nf=self.cfg.model.in_edge_nf,
+                    hidden_nf=self.cfg.model.hidden_nf,
+                    encoder_depth=self.cfg.model.encoder_depth,
+                    edge_mlp_depth=self.cfg.model.edge_mlp_depth,
+                    node_mlp_depth=self.cfg.model.node_mlp_depth,
+                    device=self.device,
+                    dropout=self.cfg.model.dropout,
+                    norm=self.cfg.model.norm,
+                    num_particle_types=self.cfg.model.n_particle_types,
+                    particle_type_embedding_size=self.cfg.model.particle_embedding,
+                    activation=self.get_activation(self.cfg.model.activation),
+                )
+                .to(dtype=self.dtype)
+                .to(device=self.device)
+            )
         else:
             raise ValueError(f"Unknown model type: {model_type}")
         return model
@@ -241,8 +264,12 @@ class Trainer:
         y = batch.y
         particle_type = getattr(batch, "particle_type", None)
         pred = self.model(batch, particle_type)
-        loss = self.criterion(pred, y)
-        metric = self.metric(pred, y)
+        if not self.stochastic:
+            loss = self.criterion(pred, y)
+            metric = self.metric(pred, y)
+        else:
+            loss = self.model.compute_nll(pred, y)
+            metric = loss
         self.optimizer.zero_grad()
         loss.mean().backward()
 
@@ -256,8 +283,12 @@ class Trainer:
         y = batch.y
         particle_type = getattr(batch, "particle_type", None)
         pred = self.model(batch, particle_type)
-        loss = self.criterion(pred, y)
-        metric = self.metric(pred, y)
+        if not self.stochastic:
+            loss = self.criterion(pred, y)
+            metric = self.metric(pred, y)
+        else:
+            loss = self.model.compute_nll(pred, y)
+            metric = loss
         return loss, metric
 
     def prepare_test(self, timesteps):
@@ -359,6 +390,8 @@ class Trainer:
                     forward_pass = self.model(batched_data, batched_particle_type)
                 else:
                     forward_pass = self.model(batched_data)
+                if self.stochastic:
+                    forward_pass = self.model.sample(forward_pass).squeeze(1)
                 if not self.cfg.data.features.target_vel:
                     batched_pred = forward_pass
                 else:

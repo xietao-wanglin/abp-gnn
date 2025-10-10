@@ -1,4 +1,4 @@
-from src.simulation import AVM
+from src.simulation import WCA
 
 import numpy as np
 
@@ -6,7 +6,7 @@ import numpy as np
 def generate_state(n, n_passive, n_boundary, box_length=1.0):
     rot_rate = np.ones(n) * 1
     rot_rate[:n_passive] = np.zeros(n_passive)
-    v0 = np.ones(n) * 0.05
+    v0 = np.ones(n) * 0.1
     v0[:n_passive] = np.zeros(n_passive)
     rot_couple = np.ones(n) * 0
     particle_type = np.ones(n, dtype=int)
@@ -54,24 +54,20 @@ def load_from_file(filepath):
 
 if __name__ == "__main__":
     np.random.seed(1)
-    box_length = 5
+    box_length = 1.0
     rot_rate, v0, rot_couple, particle_type, initial_state = generate_state(
-        n=40, n_passive=0, n_boundary=0, box_length=box_length
+        n=200, n_passive=0, n_boundary=0, box_length=box_length
     )
-    initial_state, Lx, Ly = create_bidirectional_corridor(N=80, Lx=10, Ly=4)
 
-    sim = AVM(
+    sim = WCA(
         initial_state=initial_state,
-        v0=1.55,
-        tau=0.3,
-        T=1.06,
-        D=0.1,
-        k=3,
-        t_a=1.0,
-        r=0.18,
-        box_length=Lx,
-        timesteps=400,
-        delta_t=0.05,
+        rot_couple=rot_couple,
+        rot_rate=rot_rate,
+        sigma=0.04,
+        v0=v0,
+        box_length=box_length,
+        timesteps=4000,
+        delta_t=0.1,
     )
-    sim.solve_dynamics(method="Euler", debug=True)
+    sim.solve_dynamics(method="RK45", debug=True)
     sim.create_animation(every=1)

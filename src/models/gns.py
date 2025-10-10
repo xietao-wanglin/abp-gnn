@@ -2,7 +2,7 @@ import torch
 import torch.nn as nn
 from torch_geometric.nn import MessagePassing, LayerNorm
 
-from src.models.basic import MLP
+from src.models.basic import MLP, ConditionalMAF
 
 
 class GNS_Layer(MessagePassing):
@@ -265,4 +265,108 @@ class GNS(nn.Module):
 
         x = self.decoder(x)
 
+        return x
+
+
+class StochasticGNS(nn.Module):
+    def __init__(
+        self,
+        n_layers,
+        in_node_nf,
+        out_node_nf,
+        in_edge_nf,
+        hidden_nf,
+        encoder_depth=2,
+        edge_mlp_depth=2,
+        node_mlp_depth=2,
+        activation=nn.SiLU(),
+        device="cpu",
+        dropout=0.0,
+        norm=True,
+        num_particle_types=1,
+        particle_type_embedding_size=16,
+    ):
+        super(StochasticGNS, self).__init__()
+
+        self.stochastic = True
+
+        if num_particle_types > 1:
+            self.particle_embedding = nn.Embedding(
+                num_particle_types, particle_type_embedding_size
+            )
+            node_input_size = in_node_nf + particle_type_embedding_size
+        else:
+            self.particle_embedding = None
+            node_input_size = in_node_nf
+
+        self.node_encoder = MLP(
+            in_dim=node_input_size,
+            out_dim=hidden_nf,
+            hidden_dim=hidden_nf,
+            n_layers=encoder_depth,
+            activation=activation,
+            dropout=dropout,
+            out_activation=True,
+        )
+
+        self.edge_encoder = MLP(
+            in_dim=in_edge_nf,
+            out_dim=hidden_nf,
+            hidden_dim=hidden_nf,
+            n_layers=encoder_depth,
+            activation=activation,
+            dropout=dropout,
+            out_activation=True,
+        )
+
+        self.layers = nn.ModuleList()
+
+        for _ in range(n_layers):
+            self.layers.append(
+                GNS_Layer(
+                    hidden_nf,
+                    hidden_nf,
+                    activation,
+                    dropout,
+                    norm,
+                    edge_mlp_depth,
+                    node_mlp_depth,
+                )
+            )
+
+        self.decoder = ConditionalMAF(
+            input_dim=out_node_nf,
+            context_dim=hidden_nf,
+            hidden_dim=hidden_nf,
+            n_flows=4,
+        )
+
+        self.to(device)
+    
+    def compute_nll(self, x, y_true):
+        return -self.decoder.flow.log_prob(inputs=y_true, context=x)
+    
+    def sample(self, x, n_samples=1):
+        return self.decoder.sample(context=x, n_samples=n_samples)
+
+    def forward(self, data, particle_types=None):
+        x, edge_index, edge_attr, batch = (
+            data.x,
+            data.edge_index,
+            data.edge_attr,
+            data.batch,
+        )
+
+        if self.particle_embedding is not None and particle_types is not None:
+            type_embeddings = self.particle_embedding(particle_types)
+            x = torch.cat([x, type_embeddings], dim=-1)
+
+        x = self.node_encoder(x)
+        edge_attr = self.edge_encoder(edge_attr)
+
+        for layer in self.layers:
+            x_new, edge_attr_new = layer(x, edge_index, edge_attr, batch)
+            x = x + x_new
+            edge_attr = edge_attr + edge_attr_new
+        
         return x
