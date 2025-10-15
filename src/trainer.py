@@ -218,6 +218,7 @@ class Trainer:
                     in_edge_nf=self.cfg.model.in_edge_nf,
                     hidden_nf=self.cfg.model.hidden_nf,
                     encoder_depth=self.cfg.model.encoder_depth,
+                    decoder_depth=self.cfg.model.decoder_depth,
                     edge_mlp_depth=self.cfg.model.edge_mlp_depth,
                     node_mlp_depth=self.cfg.model.node_mlp_depth,
                     device=self.device,

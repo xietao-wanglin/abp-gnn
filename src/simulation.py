@@ -128,38 +128,49 @@ class BaseSimulation:
         xlim=None,
         ylim=None,
         every=1,
+        trail_length=50,
+        color_type=False
     ):
         times, positions = self.get_solution()
-        f = plt.figure(figsize=(6, 5))
+        f = plt.figure(figsize=(6, 6))
         ax = f.add_subplot(111)
-        if xlim is not None:
-            ax.set_xlim(xlim[0], xlim[1])
-        else:
-            ax.set_xlim(0, self.box_length)
-        if ylim is not None:
-            ax.set_ylim(ylim[0], ylim[1])
-        else:
-            ax.set_ylim(0, self.box_length)
+        ax.set_xlim(xlim if xlim is not None else (0, self.box_length))
+        ax.set_ylim(ylim if ylim is not None else (0, self.box_length))
         ax.set_xlabel(r"$x$")
         ax.set_ylabel(r"$y$")
         ax.set_title(r"Time: 0.0")
+        c = self.particle_type if color_type else positions[0][2]
+        vmin = 0 if not color_type else None
+        vmax = 2 * np.pi if not color_type else None
         points = ax.scatter(
             positions[0][0],
             positions[0][1],
-            c=positions[0][2],
-            vmin=0,
-            vmax=2 * np.pi,
-            alpha=0.3,
+            c=c,
+            vmin=vmin,
+            vmax=vmax,
+            alpha=0.6,
         )
-        f.colorbar(points, label=r"Orientation $\theta_i$")
+
+        trail_segments = []
+        for _particle in range(self.n):
+            line, = ax.plot([], [], lw=2, color="red", linestyle="--", alpha=0.4)
+            trail_segments.append(line)
 
         def update(fn):
             fn = every * fn
             ax.set_title(rf"Time: {times[fn]:2f}")
             points.set_offsets(np.c_[positions[fn][0], positions[fn][1]])
-            points.set_array(positions[fn][2])
+            if not color_type:
+                points.set_array(positions[fn][2])
+
+            start_idx = max(0, fn - trail_length)
+            for i in range(self.n):
+                x_trail = positions[start_idx:fn + 1, 0, i]
+                y_trail = positions[start_idx:fn + 1, 1, i]
+                trail_segments[i].set_data(x_trail, y_trail)
 
             f.canvas.draw_idle()
+            return points, *trail_segments
 
         if timesteps is None:
             timesteps = int(self.timesteps / every)
@@ -185,7 +196,7 @@ class WCA(BaseSimulation):
         diffusion_r=0.0,
         motility=1,
         sigma=0.01,
-        epsilon=0.1,
+        epsilon=1.0,
         rot_couple=None,
         couple_radius=0.1,
         particle_type=None,
@@ -214,8 +225,7 @@ class WCA(BaseSimulation):
         self.epsilon = epsilon
         self.sigma = sigma
 
-    def repulsion(self, dx, dy):
-        distances = np.sqrt(dx**2 + dy**2)
+    def repulsion(self, dx, dy, distances):
 
         r_cutoff = (2 ** (1 / 6)) * self.sigma
 
@@ -224,12 +234,12 @@ class WCA(BaseSimulation):
         inv_r = 1.0 / distances[mask]
         inv_r6 = (self.sigma * inv_r) ** 6
         inv_r12 = inv_r6**2
-        F_mag = 4 * self.epsilon * (12 * inv_r12 - 6 * inv_r6) * inv_r
+        F_mag = 24 * self.epsilon * (2 * inv_r12 - inv_r6) * inv_r
 
         Fx = np.zeros_like(distances)
         Fy = np.zeros_like(distances)
-        Fx[mask] = F_mag * dx[mask]
-        Fy[mask] = F_mag * dy[mask]
+        Fx[mask] = F_mag * dx[mask] / distances[mask]
+        Fy[mask] = F_mag * dy[mask] / distances[mask]
 
         Fx_total = np.sum(Fx, axis=1)
         Fy_total = np.sum(Fy, axis=1)
@@ -259,7 +269,7 @@ class WCA(BaseSimulation):
             neighbor_mask * np.sin(theta[None, :] - theta[:, None]), axis=1
         )
 
-        Fx_total, Fy_total = self.repulsion(dx, dy)
+        Fx_total, Fy_total = self.repulsion(dx, dy, distances)
 
         dxdt += Fx_total
         dydt += Fy_total
