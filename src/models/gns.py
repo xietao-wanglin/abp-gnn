@@ -277,6 +277,7 @@ class StochasticGNS(nn.Module):
         in_edge_nf,
         hidden_nf,
         encoder_depth=2,
+        decoder_depth=2,
         edge_mlp_depth=2,
         node_mlp_depth=2,
         activation=nn.SiLU(),
@@ -338,16 +339,19 @@ class StochasticGNS(nn.Module):
             input_dim=out_node_nf,
             context_dim=hidden_nf,
             hidden_dim=hidden_nf,
-            n_flows=4,
+            n_flows=decoder_depth,
         )
 
         self.to(device)
     
     def compute_nll(self, x, y_true):
-        return -self.decoder.flow.log_prob(inputs=y_true, context=x)
+        return self.decoder(context=x, y=y_true)
     
     def sample(self, x, n_samples=1):
         return self.decoder.sample(context=x, n_samples=n_samples)
+    
+    def sample_mean(self, x, n_samples=None):
+        return self.decoder.sample_mean(context=x, n_samples=n_samples)
 
     def forward(self, data, particle_types=None):
         x, edge_index, edge_attr, batch = (

@@ -40,7 +40,6 @@ class ConditionalMAF(nn.Module):
     def __init__(self, input_dim, context_dim, hidden_dim=128, n_flows=4):
         super().__init__()
 
-        # Each flow applies an invertible transformation conditioned on context
         transforms = []
         for _ in range(n_flows):
             transforms.append(
@@ -60,12 +59,13 @@ class ConditionalMAF(nn.Module):
             distribution=StandardNormal([input_dim]),
         )
 
-    def forward(self, y, context):
-        # y: ground truth accelerations
-        # context: graph embeddings
+    def forward(self, context, y):
         log_prob = self.flow.log_prob(inputs=y, context=context)
-        return -log_prob.mean()   # NLL loss for training
+        return -log_prob
 
     def sample(self, context, n_samples=1):
-        # generate probabilistic predictions
         return self.flow.sample(n_samples, context)
+    
+    def sample_mean(self, context, n_samples=20):
+        samples = self.flow.sample(n_samples, context)
+        return samples.mean(dim=1)
