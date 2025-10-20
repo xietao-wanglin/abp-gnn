@@ -43,7 +43,8 @@ class Trainer:
 
         os.makedirs(self.checkpoint_dir, exist_ok=True)
         self.load_data(self.cfg.dataset)
-        self.prepare_test(self.cfg.data.subset_samples)
+        if self.cfg.test.active:
+            self.prepare_test(self.cfg.data.subset_samples)
         self.model = self.create_model()
 
         self.stochastic = getattr(self.model, "stochastic", False)
@@ -264,8 +265,9 @@ class Trainer:
         batch = batch.to(self.device)
         y = batch.y
         particle_type = getattr(batch, "particle_type", None)
-        pred = self.model(batch, particle_type)
+        context = self.model(batch, particle_type)
         if not self.stochastic:
+            pred = context
             loss = self.criterion(pred, y)
             metric = self.metric(pred, y)
         else:
@@ -283,8 +285,9 @@ class Trainer:
         batch = batch.to(self.device)
         y = batch.y
         particle_type = getattr(batch, "particle_type", None)
-        pred = self.model(batch, particle_type)
+        context = self.model(batch, particle_type)
         if not self.stochastic:
+            pred = context
             loss = self.criterion(pred, y)
             metric = self.metric(pred, y)
         else:
@@ -513,7 +516,7 @@ class Trainer:
                     )
                     self.save_ckpt(step, checkpoint_path)
 
-                if (step % self.cfg.test.log_steps) == 0:
+                if ((step % self.cfg.test.log_steps) == 0) and self.cfg.test.active:
                     self.model.eval()
                     self.compute_rollout()
                     metrics = self.test_metrics()

@@ -1,6 +1,6 @@
 seed: 1
 
-dataset: "abp"
+dataset: "abp_toy"
 
 wandb:
   name: "abp-stochastic"
@@ -15,6 +15,7 @@ model:
   in_edge_nf: 3
   hidden_nf: 64
   encoder_depth: 2
+  decoder_depth: 2
   edge_mlp_depth: 2
   node_mlp_depth: 2
   dropout: 0.0
@@ -25,7 +26,7 @@ model:
 
 train:
   lr: 1e-4
-  weight_decay: 1e-8
+  weight_decay: 0
   batch_size: 64
   n_steps: 40000
   checkpoint_every: 250
@@ -37,11 +38,12 @@ val:
   log_steps: 250
 
 test:
-  log_steps: 2500000
+  active: false
+  log_steps: 250
 
 data:
-  subset: true
-  subset_samples: [0, 5, 10, 15, 20, 25, 30, 35, 40, 45, 50, 55, 60]
+  subset: false
+  subset_samples: null
   cluster:
     method: "radius"
     parameter: 0.1

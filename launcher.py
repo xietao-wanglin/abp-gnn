@@ -64,27 +64,14 @@ def load_from_file(filepath):
 
 
 if __name__ == "__main__":
-    box_length = 1
-    rho = 0.095
-    N = 100
-    sigma = 2*box_length*np.sqrt(rho/(N*np.pi))
-    v0 = 3*sigma
-    particle_type, initial_state = generate_state_with_grid_boundary(
-        n_boundary=N, box_length=box_length, sigma=sigma
-    )
-
-    print("sigma =", sigma)
-    print("lattice spacing lc =", box_length / np.sqrt(N))
-    print("orbit radius R0 =", 3*sigma)
-    print("ratio lc/R0 =", (box_length/np.sqrt(N)) / (3*sigma))
-
+    initial_state = generate_state(1)
     sim = WCA(
         initial_state=initial_state,
-        sigma=0.04,
-        v0=v0,
-        box_length=box_length,
-        timesteps=4000,
-        delta_t=0.1,
+        rot_rate=0,
+        timesteps=20000,
+        delta_t=0.001,
+        diffusion_r=0.001,
+        diffusion_t=0.001,
     )
-    sim.solve_dynamics(method="Euler", debug=True)
-    sim.create_animation(every=10, color_type=False, trail_length=0)
+    sim.solve_dynamics(method="RK45", debug=True)
+    sim.create_animation(every=100, trail_length=20000)
