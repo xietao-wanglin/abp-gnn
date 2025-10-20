@@ -9,13 +9,13 @@ wandb:
 
 model:
   name: "S-GNS"
-  n_layers: 10
+  n_layers: 4
   in_node_nf: 1
   out_node_nf: 3
   in_edge_nf: 3
-  hidden_nf: 128
-  encoder_depth: 2
-  decoder_depth: 8
+  hidden_nf: 32
+  encoder_depth: 1
+  decoder_depth: 1
   edge_mlp_depth: 2
   node_mlp_depth: 2
   dropout: 0.0
@@ -25,7 +25,7 @@ model:
   activation: "silu"
 
 train:
-  lr: 1e-3
+  lr: 1e-4
   weight_decay: 1e-8
   batch_size: 32
   n_steps: 20000
@@ -38,6 +38,7 @@ val:
   log_steps: 250
 
 test:
+  active: true
   log_steps: 250
 
 data:

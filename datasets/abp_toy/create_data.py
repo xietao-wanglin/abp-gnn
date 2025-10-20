@@ -10,26 +10,21 @@ import os
 import json
 
 
-def generate_state(n, box_length=1.0):
+def generate_state(box_length=1.0):
     delta_t = 0.001
-    rot_rate = np.ones(n) * 0
-    rot_couple = np.ones(n) * 0
-    sigma = 0.04
+    rot_rate = 0
+    rot_couple = 0
     diffusion_r = 0.001
     diffusion_t = 0.001
 
-    initial_state = np.random.random(3 * n)
-    initial_state[2::3] *= 2 * np.pi
-    initial_state[0::3] = initial_state[0::3] * box_length
-    initial_state[1::3] = initial_state[1::3] * box_length
-
-    initial_state = initial_state.reshape(n, 3).T
+    initial_state = np.array([[0.5 * box_length],
+                              [0.5 * box_length],
+                              [0.0]])
 
     return (
         delta_t,
         rot_rate,
         rot_couple,
-        sigma,
         diffusion_r,
         diffusion_t,
         initial_state,
@@ -56,11 +51,11 @@ def compute_stats(script_dir):
 
 
 if __name__ == "__main__":
-    train_sims = 1000
+    train_sims = 50
     train_init = 0
-    test_sims = 200
+    test_sims = 10
     test_init = 0
-    long_test_sims = 4
+    long_test_sims = 1
     data_folder = "data"
 
     script_dir = os.path.dirname(os.path.abspath(__file__))
@@ -70,85 +65,73 @@ if __name__ == "__main__":
     os.makedirs(data_dir, exist_ok=True)
 
     for i in tqdm(range(train_init, train_sims + train_init), desc="Training Set"):
-        np.random.seed(i)
-        n = np.random.randint(30, 50)
         (
             delta_t,
             rot_rate,
             rot_couple,
-            sigma,
             diffusion_r,
             diffusion_t,
             initial_state,
-        ) = generate_state(n=n)
+        ) = generate_state()
         sim = WCA(
             delta_t=delta_t,
             rot_couple=rot_couple,
             rot_rate=rot_rate,
             diffusion_r=diffusion_r,
             diffusion_t=diffusion_t,
-            timesteps=10000,
-            sigma=sigma,
+            timesteps=101,
             seed=i,
             initial_state=initial_state,
         )
         sim.solve_dynamics(method="RK45")
         _times, loc = sim.get_solution_abs(every=100)
-        np.save(f"{script_dir}/{data_folder}/simulation_train_{i}.npy", loc[10:])
+        np.save(f"{script_dir}/{data_folder}/simulation_train_{i}.npy", loc)
 
     for i in tqdm(range(test_init, test_sims + test_init), desc="Test Set"):
-        np.random.seed(98743 * i + 4500)
-        n = np.random.randint(30, 50)
         (
             delta_t,
             rot_rate,
             rot_couple,
-            sigma,
             diffusion_r,
             diffusion_t,
             initial_state,
-        ) = generate_state(n=n)
+        ) = generate_state()
         sim = WCA(
             delta_t=delta_t,
             rot_couple=rot_couple,
             rot_rate=rot_rate,
             diffusion_r=diffusion_r,
             diffusion_t=diffusion_t,
-            timesteps=10000,
-            sigma=sigma,
+            timesteps=101,
             seed=98743 * i + 4500,
             initial_state=initial_state,
         )
         sim.solve_dynamics(method="RK45")
         _times, loc = sim.get_solution_abs(every=100)
-        np.save(f"{script_dir}/{data_folder}/simulation_test_{i}.npy", loc[10:])
+        np.save(f"{script_dir}/{data_folder}/simulation_test_{i}.npy", loc)
 
     for i in tqdm(range(long_test_sims), desc="Long Test Set"):
-        np.random.seed(983 * i + 2000)
-        n = np.random.randint(45, 70)
         (
             delta_t,
             rot_rate,
             rot_couple,
-            sigma,
             diffusion_r,
             diffusion_t,
             initial_state,
-        ) = generate_state(n=n)
+        ) = generate_state()
         sim = WCA(
             delta_t=delta_t,
             rot_couple=rot_couple,
             rot_rate=rot_rate,
             diffusion_r=diffusion_r,
             diffusion_t=diffusion_t,
-            sigma=sigma,
-            timesteps=40000,
+            timesteps=401,
             seed=983 * i + 2000,
             initial_state=initial_state,
         )
         sim.solve_dynamics(method="RK45")
         _times, loc = sim.get_solution_abs(every=100)
-        np.save(f"{script_dir}/{data_folder}/simulation_long_test_{i}.npy", loc[10:])
+        np.save(f"{script_dir}/{data_folder}/simulation_long_test_{i}.npy", loc)
 
     vel_mean, vel_std, angular_mean, angular_std = compute_stats(script_dir)
     stats = {
