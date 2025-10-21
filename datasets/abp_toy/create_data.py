@@ -17,9 +17,7 @@ def generate_state(box_length=1.0):
     diffusion_r = 0.001
     diffusion_t = 0.001
 
-    initial_state = np.array([[0.5 * box_length],
-                              [0.5 * box_length],
-                              [0.0]])
+    initial_state = np.array([[0.5 * box_length], [0.5 * box_length], [0.0]])
 
     return (
         delta_t,

@@ -129,7 +129,7 @@ class BaseSimulation:
         ylim=None,
         every=1,
         trail_length=50,
-        color_type=False
+        color_type=False,
     ):
         times, positions = self.get_solution()
         f = plt.figure(figsize=(6, 6))
@@ -153,7 +153,7 @@ class BaseSimulation:
 
         trail_segments = []
         for _particle in range(self.n):
-            line, = ax.plot([], [], lw=2, color="red", linestyle="--", alpha=0.4)
+            (line,) = ax.plot([], [], lw=2, color="red", linestyle="--", alpha=0.4)
             trail_segments.append(line)
 
         def update(fn):
@@ -165,8 +165,8 @@ class BaseSimulation:
 
             start_idx = max(0, fn - trail_length)
             for i in range(self.n):
-                x_trail = positions[start_idx:fn + 1, 0, i]
-                y_trail = positions[start_idx:fn + 1, 1, i]
+                x_trail = positions[start_idx : fn + 1, 0, i]
+                y_trail = positions[start_idx : fn + 1, 1, i]
                 trail_segments[i].set_data(x_trail, y_trail)
 
             f.canvas.draw_idle()
@@ -226,7 +226,6 @@ class WCA(BaseSimulation):
         self.sigma = sigma
 
     def repulsion(self, dx, dy, distances):
-
         r_cutoff = (2 ** (1 / 6)) * self.sigma
 
         mask = (distances < r_cutoff) & (distances > 0)

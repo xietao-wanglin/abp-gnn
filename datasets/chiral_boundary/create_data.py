@@ -79,7 +79,7 @@ if __name__ == "__main__":
             particle_type,
         ) = generate_state(n=n)
         sim = WCA(
-            v0=3*sigma,
+            v0=3 * sigma,
             rot_couple=rot_couple,
             rot_rate=rot_rate,
             timesteps=100,
@@ -104,7 +104,7 @@ if __name__ == "__main__":
             particle_type,
         ) = generate_state(n=n)
         sim = WCA(
-            v0=3*sigma,
+            v0=3 * sigma,
             rot_couple=rot_couple,
             rot_rate=rot_rate,
             timesteps=100,
@@ -129,7 +129,7 @@ if __name__ == "__main__":
             particle_type,
         ) = generate_state(n=n)
         sim = WCA(
-            v0=3*sigma,
+            v0=3 * sigma,
             rot_couple=rot_couple,
             rot_rate=rot_rate,
             sigma=sigma,

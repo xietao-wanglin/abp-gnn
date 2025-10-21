@@ -4,6 +4,7 @@ from nflows.distributions.normal import StandardNormal
 from nflows.transforms import CompositeTransform
 from nflows.transforms.autoregressive import MaskedAffineAutoregressiveTransform
 
+
 class MLP(nn.Module):
     def __init__(
         self,
@@ -34,7 +35,7 @@ class MLP(nn.Module):
 
     def forward(self, x):
         return self.net(x)
-    
+
 
 class ConditionalMAF(nn.Module):
     def __init__(self, input_dim, context_dim, hidden_dim=128, n_flows=4):
@@ -50,7 +51,7 @@ class ConditionalMAF(nn.Module):
                     num_blocks=2,
                     use_residual_blocks=True,
                     random_mask=False,
-                    activation=nn.SiLU()
+                    activation=nn.SiLU(),
                 )
             )
 
@@ -65,7 +66,7 @@ class ConditionalMAF(nn.Module):
 
     def sample(self, context, n_samples=1):
         return self.flow.sample(n_samples, context)
-    
+
     def sample_mean(self, context, n_samples=20):
         samples = self.flow.sample(n_samples, context)
         return samples.mean(dim=1)

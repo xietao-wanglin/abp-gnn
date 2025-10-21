@@ -176,6 +176,7 @@ def discrete_simulation(
                 y=label,
                 edge_index=edge_index.to(device),
                 edge_attr=edge_attr.to(device).to(dtype=dtype),
+                particle_type=particle_type.to(device),
             )
 
             data_pairs.append(data)
