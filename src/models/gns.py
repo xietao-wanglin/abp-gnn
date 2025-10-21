@@ -343,13 +343,13 @@ class StochasticGNS(nn.Module):
         )
 
         self.to(device)
-    
+
     def compute_nll(self, x, y_true):
         return self.decoder(context=x, y=y_true)
-    
+
     def sample(self, x, n_samples=1):
         return self.decoder.sample(context=x, n_samples=n_samples)
-    
+
     def sample_mean(self, x, n_samples=None):
         return self.decoder.sample_mean(context=x, n_samples=n_samples)
 
@@ -372,5 +372,5 @@ class StochasticGNS(nn.Module):
             x_new, edge_attr_new = layer(x, edge_index, edge_attr, batch)
             x = x + x_new
             edge_attr = edge_attr + edge_attr_new
-        
+
         return x

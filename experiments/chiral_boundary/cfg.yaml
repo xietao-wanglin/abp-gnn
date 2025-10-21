@@ -38,6 +38,7 @@ val:
   log_steps: 250
 
 test:
+  active: true
   log_steps: 250
 
 data:
