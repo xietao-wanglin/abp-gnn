@@ -4,6 +4,7 @@ import numpy as np
 
 
 def generate_state(n, box_length=1.0):
+    sigma = np.random.uniform(0.01, 0.12, size=(n,))
     initial_state = np.random.random(3 * n)
     initial_state[2::3] *= 2 * np.pi
     initial_state[0::3] = initial_state[0::3] * box_length
@@ -11,7 +12,7 @@ def generate_state(n, box_length=1.0):
 
     initial_state = initial_state.reshape(n, 3).T
 
-    return initial_state
+    return sigma, initial_state
 
 
 def load_from_file(filepath):
@@ -21,16 +22,16 @@ def load_from_file(filepath):
 
 if __name__ == "__main__":
     np.random.seed(0)
-    initial_state = generate_state(30)
+    sigma, initial_state = generate_state(30)
     sim = WCA(
         v0=0.1,
         initial_state=initial_state,
         rot_rate=0.0,
-        sigma=0.04,
+        sigma=sigma,
         epsilon=0.1,
-        timesteps=160,
+        timesteps=80,
         delta_t=0.1,
-        box_length=0.4
+        box_length=1
     )
     sim.solve_dynamics(method="RK45", debug=True)
     sim.create_animation()
