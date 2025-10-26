@@ -4,6 +4,7 @@ import matplotlib.pyplot as plt
 from matplotlib.animation import FuncAnimation
 from tqdm import tqdm
 from time import time
+from scipy.spatial import KDTree
 
 
 class ParticleType:
@@ -250,6 +251,13 @@ class WCA(BaseSimulation):
         x = positions[0]
         y = positions[1]
         theta = positions[2]
+
+        if self.boundary_type[0] == BoundaryType.PERIODIC:
+            x = x % self.box_length
+        if self.boundary_type[1] == BoundaryType.PERIODIC:
+            y = y % self.box_length
+        if self.boundary_type[2] == BoundaryType.PERIODIC:
+            theta = theta % (2 * np.pi)
 
         boundary_mask = self.particle_type > ParticleType.BOUNDARY
         dxdt = self.v0 * np.cos(theta)
@@ -640,6 +648,132 @@ class AVM(BaseSimulation):
         dxdt = v * e[:, 0]
         dydt = v * e[:, 1]
         dthetadt = np.cross(e, de_dt)  # scalar angular velocity (z-component)
+
+        derivative = np.vstack([dxdt, dydt, dthetadt])
+        return derivative.T.reshape(3 * self.n)
+
+
+class WCA2(BaseSimulation):
+    def __init__(
+        self,
+        initial_state,
+        v0=None,
+        rot_rate=None,
+        diffusion_t=0.0,
+        diffusion_r=0.0,
+        motility=1,
+        sigma=0.01,
+        epsilon=1.0,
+        rot_couple=None,
+        couple_radius=0.1,
+        particle_type=None,
+        box_length=1,
+        timesteps=100,
+        delta_t=0.1,
+        boundary_type=None,
+        seed=0,
+    ):
+        super().__init__(
+            initial_state,
+            v0,
+            rot_rate,
+            diffusion_t,
+            diffusion_r,
+            motility,
+            rot_couple,
+            couple_radius,
+            particle_type,
+            box_length,
+            timesteps,
+            delta_t,
+            boundary_type,
+            seed,
+        )
+        self.epsilon = epsilon
+        self.sigma = sigma
+
+    def particle_system(self, t, positions):
+        positions = positions.reshape(self.n, 3).T
+        x, y, theta = positions[0], positions[1], positions[2]
+
+        if self.boundary_type[0] == BoundaryType.PERIODIC:
+            x = x % self.box_length
+        if self.boundary_type[1] == BoundaryType.PERIODIC:
+            y = y % self.box_length
+        if self.boundary_type[2] == BoundaryType.PERIODIC:
+            theta = theta % (2 * np.pi)
+
+        dxdt = self.v0 * np.cos(theta)
+        dydt = self.v0 * np.sin(theta)
+
+        Fx_total = np.zeros(self.n)
+        Fy_total = np.zeros(self.n)
+        interaction = np.zeros(self.n)
+
+        pos_2d = np.stack([x, y], axis=1)
+
+        r_cutoff_wca = (2 ** (1 / 6)) * self.sigma
+        r_max = max(r_cutoff_wca, self.couple_radius)
+        tree = KDTree(pos_2d, boxsize=[self.box_length, self.box_length])
+        pairs = tree.query_pairs(r=r_max, output_type="ndarray")
+
+        if pairs.size > 0:
+            i = pairs[:, 0]
+            j = pairs[:, 1]
+
+            pos_i = pos_2d[i]
+            pos_j = pos_2d[j]
+
+            dx = pos_i[:, 0] - pos_j[:, 0]
+            dy = pos_i[:, 1] - pos_j[:, 1]
+            dx = dx - self.box_length * np.round(dx / self.box_length)
+            dy = dy - self.box_length * np.round(dy / self.box_length)
+
+            distances = np.sqrt(dx**2 + dy**2)
+            mask_wca = (distances < r_cutoff_wca) & (distances > 0)
+
+            if np.any(mask_wca):
+                dist_wca = distances[mask_wca]
+                dx_wca = dx[mask_wca]
+                dy_wca = dy[mask_wca]
+
+                inv_r = 1.0 / dist_wca
+                inv_r6 = (self.sigma * inv_r) ** 6
+                inv_r12 = inv_r6**2
+                F_mag = 24 * self.epsilon * (2 * inv_r12 - inv_r6) * inv_r
+
+                Fx = F_mag * dx_wca / dist_wca
+                Fy = F_mag * dy_wca / dist_wca
+
+                i_wca = i[mask_wca]
+                j_wca = j[mask_wca]
+
+                np.add.at(Fx_total, i_wca, Fx)
+                np.add.at(Fx_total, j_wca, -Fx)
+                np.add.at(Fy_total, i_wca, Fy)
+                np.add.at(Fy_total, j_wca, -Fy)
+
+            mask_couple = (distances < self.couple_radius) & (distances > 0)
+
+            if np.any(mask_couple):
+                i_couple = i[mask_couple]
+                j_couple = j[mask_couple]
+
+                theta_i = theta[i_couple]
+                theta_j = theta[j_couple]
+
+                sin_dtheta = np.sin(theta_j - theta_i)
+                np.add.at(interaction, i_couple, sin_dtheta)
+                np.add.at(interaction, j_couple, -sin_dtheta)
+
+        dxdt += Fx_total
+        dydt += Fy_total
+        dthetadt = self.rot_rate + self.rot_couple * interaction
+
+        boundary_mask = self.particle_type > ParticleType.BOUNDARY
+        dxdt *= boundary_mask
+        dydt *= boundary_mask
+        dthetadt *= boundary_mask
 
         derivative = np.vstack([dxdt, dydt, dthetadt])
         return derivative.T.reshape(3 * self.n)
