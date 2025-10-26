@@ -28,7 +28,6 @@ class BaseSimulation:
         rot_rate=None,
         diffusion_t=0.0,
         diffusion_r=0.0,
-        motility=1,
         rot_couple=None,
         couple_radius=0.1,
         particle_type=None,
@@ -51,7 +50,6 @@ class BaseSimulation:
         self.delta_t = delta_t
         self.diffusion_t = diffusion_t
         self.diffusion_r = diffusion_r
-        self.motility = motility
         if boundary_type is None:
             self.boundary_type = (
                 BoundaryType.PERIODIC,
@@ -130,7 +128,7 @@ class BaseSimulation:
         ylim=None,
         every=None,
         trail_length=None,
-        color_type=False,
+        color_feature=None,
     ):
         times, positions = self.get_solution()
         if every is None:
@@ -142,9 +140,10 @@ class BaseSimulation:
         ax.set_xlabel(r"$x$")
         ax.set_ylabel(r"$y$")
         ax.set_title(r"Time: 0.0")
-        c = self.particle_type if color_type else positions[0][2]
-        vmin = 0 if not color_type else None
-        vmax = 2 * np.pi if not color_type else None
+        c = color_feature if color_feature is not None else positions[0][2]
+        vmin = 0 if color_feature is None else None
+        vmax = 2 * np.pi if color_feature is None else None
+        s = 200000*self.sigma**2 if self.sigma is not None else None
         points = ax.scatter(
             positions[0][0],
             positions[0][1],
@@ -152,6 +151,7 @@ class BaseSimulation:
             vmin=vmin,
             vmax=vmax,
             alpha=0.6,
+            s=s
         )
 
         if trail_length is not None:
@@ -164,7 +164,7 @@ class BaseSimulation:
             fn = every * fn
             ax.set_title(rf"Time: {times[fn]:2f}")
             points.set_offsets(np.c_[positions[fn][0], positions[fn][1]])
-            if not color_type:
+            if color_feature is None:
                 points.set_array(positions[fn][2])
 
             if trail_length is not None:
@@ -200,8 +200,7 @@ class WCA(BaseSimulation):
         rot_rate=None,
         diffusion_t=0.0,
         diffusion_r=0.0,
-        motility=1,
-        sigma=0.01,
+        sigma=None,
         epsilon=1.0,
         rot_couple=None,
         couple_radius=0.0,
@@ -218,7 +217,6 @@ class WCA(BaseSimulation):
             rot_rate,
             diffusion_t,
             diffusion_r,
-            motility,
             rot_couple,
             couple_radius,
             particle_type,
@@ -229,15 +227,17 @@ class WCA(BaseSimulation):
             seed,
         )
         self.epsilon = epsilon
-        self.sigma = sigma
+        self.sigma = set_param(sigma, self.n, 0.01)
+
+        self.pair_sigma = (self.sigma[:, None] + self.sigma[None, :])/2
 
     def repulsion(self, dx, dy, distances):
-        r_cutoff = (2 ** (1 / 6)) * self.sigma
+        r_cutoff = (2 ** (1 / 6)) * self.pair_sigma
 
         mask = (distances < r_cutoff) & (distances > 0)
 
         inv_r = 1.0 / distances[mask]
-        inv_r6 = (self.sigma * inv_r) ** 6
+        inv_r6 = (self.pair_sigma[mask] * inv_r) ** 6
         inv_r12 = inv_r6**2
         F_mag = 24 * self.epsilon * (2 * inv_r12 - inv_r6) * inv_r
 
@@ -302,7 +302,6 @@ class LennardJones(BaseSimulation):
         rot_rate=None,
         diffusion_t=0.0,
         diffusion_r=0.0,
-        motility=1,
         sigma=0.01,
         epsilon=0.1,
         law_power=6.0,
@@ -324,7 +323,6 @@ class LennardJones(BaseSimulation):
             rot_rate,
             diffusion_t,
             diffusion_r,
-            motility,
             rot_couple,
             couple_radius,
             particle_type,
@@ -412,7 +410,6 @@ class Toy(BaseSimulation):
         rot_rate=None,
         diffusion_t=0.0,
         diffusion_r=0.0,
-        motility=1,
         epsilon=1,
         rot_couple=None,
         couple_radius=0.1,
@@ -429,7 +426,6 @@ class Toy(BaseSimulation):
             rot_rate,
             diffusion_t,
             diffusion_r,
-            motility,
             rot_couple,
             couple_radius,
             particle_type,
@@ -512,7 +508,6 @@ class AVM(BaseSimulation):
         r=0.18,  # agent radius (m)
         diffusion_t=0.0,
         diffusion_r=0.0,
-        motility=1,
         particle_type=None,
         box_length=1.0,
         timesteps=100,
@@ -525,7 +520,6 @@ class AVM(BaseSimulation):
             v0=v0,
             diffusion_t=diffusion_t,
             diffusion_r=diffusion_r,
-            motility=motility,
             particle_type=particle_type,
             box_length=box_length,
             timesteps=timesteps,
@@ -666,7 +660,6 @@ class WCA2(BaseSimulation):
         rot_rate=None,
         diffusion_t=0.0,
         diffusion_r=0.0,
-        motility=1,
         sigma=0.01,
         epsilon=1.0,
         rot_couple=None,
@@ -684,7 +677,6 @@ class WCA2(BaseSimulation):
             rot_rate,
             diffusion_t,
             diffusion_r,
-            motility,
             rot_couple,
             couple_radius,
             particle_type,
