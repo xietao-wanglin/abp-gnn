@@ -128,11 +128,13 @@ class BaseSimulation:
         filename=None,
         xlim=None,
         ylim=None,
-        every=1,
-        trail_length=50,
+        every=None,
+        trail_length=None,
         color_type=False,
     ):
         times, positions = self.get_solution()
+        if every is None:
+            every = 1
         f = plt.figure(figsize=(6, 6))
         ax = f.add_subplot(111)
         ax.set_xlim(xlim if xlim is not None else (0, self.box_length))
@@ -152,10 +154,11 @@ class BaseSimulation:
             alpha=0.6,
         )
 
-        trail_segments = []
-        for _particle in range(self.n):
-            (line,) = ax.plot([], [], lw=2, color="red", linestyle="--", alpha=0.4)
-            trail_segments.append(line)
+        if trail_length is not None:
+            trail_segments = []
+            for _particle in range(self.n):
+                (line,) = ax.plot([], [], lw=2, color="red", linestyle="--", alpha=0.4)
+                trail_segments.append(line)
 
         def update(fn):
             fn = every * fn
@@ -164,14 +167,16 @@ class BaseSimulation:
             if not color_type:
                 points.set_array(positions[fn][2])
 
-            start_idx = max(0, fn - trail_length)
-            for i in range(self.n):
-                x_trail = positions[start_idx : fn + 1, 0, i]
-                y_trail = positions[start_idx : fn + 1, 1, i]
-                trail_segments[i].set_data(x_trail, y_trail)
+            if trail_length is not None:
+                start_idx = max(0, fn - trail_length)
+                for i in range(self.n):
+                    x_trail = positions[start_idx : fn + 1, 0, i]
+                    y_trail = positions[start_idx : fn + 1, 1, i]
+                    trail_segments[i].set_data(x_trail, y_trail)
 
-            f.canvas.draw_idle()
-            return points, *trail_segments
+                return points, *trail_segments
+            
+            return points
 
         if timesteps is None:
             timesteps = int(self.timesteps / every)
@@ -199,7 +204,7 @@ class WCA(BaseSimulation):
         sigma=0.01,
         epsilon=1.0,
         rot_couple=None,
-        couple_radius=0.1,
+        couple_radius=0.0,
         particle_type=None,
         box_length=1,
         timesteps=100,
@@ -665,7 +670,7 @@ class WCA2(BaseSimulation):
         sigma=0.01,
         epsilon=1.0,
         rot_couple=None,
-        couple_radius=0.1,
+        couple_radius=0.0,
         particle_type=None,
         box_length=1,
         timesteps=100,
