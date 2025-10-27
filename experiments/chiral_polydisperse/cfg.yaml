@@ -1,17 +1,17 @@
 seed: 1
 
-dataset: "vicsek"
+dataset: "chiral_polydisperse"
 
 wandb:
-  name: "vicsek"
+  name: "chiral_polydisperse"
   track_gradients: true
   gradients_every: 125
 
 model:
   name: "GNS"
   n_layers: 4
-  in_node_nf: 1
-  out_node_nf: 3
+  in_node_nf: 2
+  out_node_nf: 2
   in_edge_nf: 3
   hidden_nf: 64
   encoder_depth: 2
@@ -20,7 +20,7 @@ model:
   node_mlp_depth: 2
   dropout: 0.0
   norm: false
-  n_particle_types: 1
+  n_particle_types: 2
   particle_embedding: 16
   activation: "silu"
 

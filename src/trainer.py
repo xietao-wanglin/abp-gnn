@@ -81,14 +81,8 @@ class Trainer:
         with open(f"{self.script_dir}/../../datasets/{dataset}/metadata.json") as f:
             self.metadata = json.load(f)
 
-        self.train_simulations = [
-            torch.tensor(np.load(f), device=self.device, dtype=self.dtype)
-            for f in train_glob
-        ]
-        self.val_simulations = [
-            torch.tensor(np.load(f), device=self.device, dtype=self.dtype)
-            for f in val_glob
-        ]
+        self.train_simulations = [np.load(f) for f in train_glob]
+        self.val_simulations = [np.load(f) for f in val_glob]
 
         particle_type_train_glob = sorted(
             glob(f"{self.script_dir}/../../datasets/{dataset}/data/particle_train_*")
@@ -107,9 +101,25 @@ class Trainer:
             self.train_particle_type = None
             self.test_particle_type = None
 
+        features_train_glob = sorted(
+            glob(f"{self.script_dir}/../../datasets/{dataset}/data/features_train_*")
+        )
+        features_test_glob = sorted(
+            glob(f"{self.script_dir}/../../datasets/{dataset}/data/features_test_*")
+        )
+        if features_train_glob:
+            self.train_features = [
+                np.load(features) for features in features_train_glob
+            ]
+            self.test_features = [np.load(features) for features in features_test_glob]
+        else:
+            self.train_features = None
+            self.test_features = None
+
         data_pairs_train = discrete_simulation(
             self.train_simulations,
             particle_type_list=self.train_particle_type,
+            features_list=self.train_features,
             subset=self.cfg.data.subset,
             subset_samples=self.cfg.data.subset_samples,
             cluster_method=self.cfg.data.cluster.method,
@@ -126,6 +136,7 @@ class Trainer:
         data_pairs_val = discrete_simulation(
             self.val_simulations,
             particle_type_list=self.test_particle_type,
+            features_list=self.test_features,
             subset=self.cfg.data.subset,
             subset_samples=self.cfg.data.subset_samples,
             cluster_method=self.cfg.data.cluster.method,
@@ -299,6 +310,7 @@ class Trainer:
         initial_states = []
         ground_truths = []
         particle_types = []
+        particle_features = []
         for sim_idx, sim in enumerate(self.val_simulations):
             if self.test_particle_type is not None:
                 p_type = torch.tensor(
@@ -308,18 +320,29 @@ class Trainer:
                 )
             else:
                 p_type = None
+            if self.test_features is not None:
+                p_features = torch.tensor(
+                    self.test_features[sim_idx],
+                    dtype=self.dtype,
+                    device=self.device,
+                )
+            else:
+                p_features = None
             for t in timesteps:
-                x_init = sim[t]
+                x_init = torch.tensor(sim[t], dtype=self.dtype, device=self.device)
                 x_bounded = apply_periodic_boundary(x_init)
                 initial_states.append(x_bounded)
 
-                gt_trajectory = apply_periodic_boundary(sim[t + 1 : t + 21])
+                traj = torch.tensor(sim[t + 1 : t + 21], dtype=self.dtype, device=self.device)
+                gt_trajectory = apply_periodic_boundary(traj)
                 ground_truths.append(gt_trajectory)
                 particle_types.append(p_type)
+                particle_features.append(p_features)
 
         self.initial_states = initial_states
         self.ground_truths = ground_truths
         self.particle_types = particle_types
+        self.particle_features = particle_features
         self.rollout_length = len(ground_truths[0])
 
         return len(initial_states)
@@ -363,6 +386,8 @@ class Trainer:
                 )
                 features = []
 
+                if self.particle_features[traj_idx] is not None:
+                    features.append(self.particle_features[traj_idx].T)
                 if self.cfg.data.features.use_pos:
                     features.append(x_bounded[:2].T)
                 if self.cfg.data.features.use_angle:
