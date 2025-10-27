@@ -92,6 +92,7 @@ if __name__ == "__main__":
         _times, loc = sim.get_solution_abs()
         np.save(f"{script_dir}/{data_folder}/simulation_train_{i}.npy", loc[10:])
         np.save(f"{script_dir}/{data_folder}/particle_train_{i}.npy", particle_type)
+        np.save(f"{script_dir}/{data_folder}/features_train_{i}.npy", sigma[np.newaxis, ...])
 
     for i in tqdm(range(test_init, test_sims + test_init), desc="Test Set"):
         np.random.seed(98743 * i + 4500)
@@ -117,6 +118,7 @@ if __name__ == "__main__":
         _times, loc = sim.get_solution_abs()
         np.save(f"{script_dir}/{data_folder}/simulation_test_{i}.npy", loc[10:])
         np.save(f"{script_dir}/{data_folder}/particle_test_{i}.npy", particle_type)
+        np.save(f"{script_dir}/{data_folder}/features_test_{i}.npy", sigma[np.newaxis, ...])
 
     for i in tqdm(range(long_test_sims), desc="Long Test Set"):
         np.random.seed(983 * i + 2000)
@@ -142,6 +144,7 @@ if __name__ == "__main__":
         _times, loc = sim.get_solution_abs()
         np.save(f"{script_dir}/{data_folder}/simulation_long_test_{i}.npy", loc[10:])
         np.save(f"{script_dir}/{data_folder}/particle_long_test_{i}.npy", particle_type)
+        np.save(f"{script_dir}/{data_folder}/features_long_test_{i}.npy", sigma[np.newaxis, ...])
 
     vel_mean, vel_std = compute_stats(script_dir)
     stats = {
