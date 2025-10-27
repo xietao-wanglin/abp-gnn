@@ -2,7 +2,7 @@ from src.simulation import BoundaryType
 import torch
 from torch_geometric.data import Dataset, Data
 
-from typing import Optional, List, Tuple, Dict
+from typing import Optional, List, Tuple
 
 
 def apply_periodic_boundary(
@@ -49,50 +49,24 @@ def apply_periodic_boundary(
 
 
 def discrete_simulation(
-    simulation_list: List,
-    particle_type_list: Optional[List] = None,
-    subset: Optional[bool] = False,
-    subset_samples: Optional[List] = None,
-    n_samples: Optional[int] = 4,
-    cluster_method: Optional[str] = "radius",
-    p: Optional[int] = 0.1,
-    use_distance: Optional[bool] = False,
-    use_rel_pos: Optional[bool] = False,
-    target_vel: Optional[bool] = True,
-    use_pos: Optional[bool] = False,
-    use_angle: Optional[bool] = True,
-    boundary_type: Optional[Tuple] = None,
-    stats: Optional[Dict] = None,
-    dtype: Optional[torch.dtype] = torch.double,
-    device: Optional[str | torch.device] = "cpu",
-) -> List:
-    """
-    Process multiple simulations for training.
-    Returns list of (input, target) pairs.
-
-    Parameters
-    ----------
-    simulation_list: List
-        List of simulation arrays, each of shape (timesteps, 3, N).
-    subset: bool, optional
-        If True, selects `n_samples` random timesteps instead of all.
-    subset_samples: List, optional
-        If provided, samples to choose from trajectories if `subset=True`, otherwise random, default is None.
-    n_samples: int, optional
-        Number of random samples to pick when `subset=True`.
-    cluster_method: str, optional
-        Method used to create edges in graph, either 'radius' or 'knn', default is 'radius'.
-    p: float or int, optional
-        Parameter of `cluster_method`, default is 0.1.
-    dtype: torch.dtype
-        Data type for conversion, default is torch.float.
-    device: str or torch.device, optional
-        Either 'cpu', 'cuda' or torch.device instance, default is 'cpu'.
-
-    Returns
-    -------
-    data_pairs: List
-    """
+    simulation_list,
+    particle_type_list=None,
+    features_list=None,
+    subset=False,
+    subset_samples=None,
+    n_samples=4,
+    cluster_method="radius",
+    p=0.1,
+    use_distance=False,
+    use_rel_pos=False,
+    target_vel=True,
+    use_pos=False,
+    use_angle=True,
+    boundary_type=None,
+    stats=None,
+    dtype=torch.double,
+    device="cpu",
+):
     if boundary_type is None:
         boundary_type = (
             BoundaryType.PERIODIC,
@@ -109,15 +83,17 @@ def discrete_simulation(
         sim = simulation_list[idx]
         if particle_type_list is not None:
             particle_type = particle_type_list[idx]
-            if not torch.is_tensor(particle_type):
-                particle_type = torch.tensor(
-                    particle_type, dtype=torch.int, device=device
-                )
+            particle_type = torch.tensor(particle_type, dtype=torch.int, device=device)
         else:
             particle_type = None
 
-        if not torch.is_tensor(sim):
-            sim = torch.tensor(sim, dtype=dtype)
+        if features_list is not None:
+            particle_features = features_list[idx]
+            particle_features = torch.tensor(
+                particle_features, dtype=dtype, device=device
+            )
+
+        sim = torch.tensor(sim, dtype=dtype)
 
         num_timesteps = sim.shape[0] - 1
 
@@ -161,6 +137,9 @@ def discrete_simulation(
 
             features = []
 
+            if features_list is not None:
+                features.append(particle_features.T)
+
             if use_pos:
                 features.append(x_bounded[:2].T)
             if use_angle:
@@ -172,11 +151,11 @@ def discrete_simulation(
                 data_input = torch.ones(batch_size, 1, device=device, dtype=dtype)
 
             data = Data(
-                x=data_input.to(device).to(dtype=dtype),
+                x=data_input,
                 y=label,
-                edge_index=edge_index.to(device),
-                edge_attr=edge_attr.to(device).to(dtype=dtype),
-                particle_type=particle_type.to(device),
+                edge_index=edge_index,
+                edge_attr=edge_attr,
+                particle_type=particle_type,
             )
 
             data_pairs.append(data)

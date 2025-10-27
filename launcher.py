@@ -31,7 +31,7 @@ if __name__ == "__main__":
         epsilon=0.1,
         timesteps=80,
         delta_t=0.1,
-        box_length=1
+        box_length=1,
     )
     sim.solve_dynamics(method="RK45", debug=True)
     sim.create_animation()

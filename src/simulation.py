@@ -143,15 +143,9 @@ class BaseSimulation:
         c = color_feature if color_feature is not None else positions[0][2]
         vmin = 0 if color_feature is None else None
         vmax = 2 * np.pi if color_feature is None else None
-        s = 200000*self.sigma**2 if self.sigma is not None else None
+        s = 200000 * self.sigma**2 if self.sigma is not None else None
         points = ax.scatter(
-            positions[0][0],
-            positions[0][1],
-            c=c,
-            vmin=vmin,
-            vmax=vmax,
-            alpha=0.6,
-            s=s
+            positions[0][0], positions[0][1], c=c, vmin=vmin, vmax=vmax, alpha=0.6, s=s
         )
 
         if trail_length is not None:
@@ -175,7 +169,7 @@ class BaseSimulation:
                     trail_segments[i].set_data(x_trail, y_trail)
 
                 return points, *trail_segments
-            
+
             return points
 
         if timesteps is None:
@@ -229,7 +223,7 @@ class WCA(BaseSimulation):
         self.epsilon = epsilon
         self.sigma = set_param(sigma, self.n, 0.01)
 
-        self.pair_sigma = (self.sigma[:, None] + self.sigma[None, :])/2
+        self.pair_sigma = (self.sigma[:, None] + self.sigma[None, :]) / 2
 
     def repulsion(self, dx, dy, distances):
         r_cutoff = (2 ** (1 / 6)) * self.pair_sigma
