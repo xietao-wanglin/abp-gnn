@@ -15,18 +15,20 @@ def generate_state(n, delta=0.02):
     rot_rate = np.zeros(n)
     rot_couple = np.zeros(n)
     sigma = 0.04
-    box_length = 0.4
+    box_length = 1
     epsilon = 0.1
 
     while True:
         initial_state = np.random.random(3 * n)
-        initial_state[2::3] *= 2 * np.pi
-        initial_state[0::3] *= box_length
-        initial_state[1::3] *= box_length
+        initial_state[2::3] *= 2 * np.pi  # angles
+        initial_state[0::3] *= box_length  # x positions
+        initial_state[1::3] *= box_length  # y positions
         initial_state = initial_state.reshape(n, 3).T
 
-        positions = initial_state[:2].T
+        positions = initial_state[:2].T  # (n, 2) array of x, y positions
         dists = np.linalg.norm(positions[:, None, :] - positions[None, :, :], axis=-1)
+
+        # Mask out self-distances
         np.fill_diagonal(dists, np.inf)
 
         if np.all(dists > delta):
@@ -46,14 +48,13 @@ def generate_state(n, delta=0.02):
 
 
 def compute_stats(script_dir):
-    box_length = 0.4
     sim_glob = sorted(glob(f"{script_dir}/data/simulation_train_*"))
     particle_glob = sorted(glob(f"{script_dir}/data/particle_train_*"))
     all_list = []
     for idx, data in enumerate(sim_glob):
         data_arr = np.load(data)
         particle_arr = np.load(particle_glob[idx])
-        bcs = apply_periodic_boundary(torch.tensor(data_arr[::2]), dims=[box_length, box_length, 2 * torch.pi]).numpy()
+        bcs = apply_periodic_boundary(torch.tensor(data_arr[::2])).numpy()
         pos_diff = data_arr[1::2] - bcs
         df = np.sqrt(pos_diff[:, 0] ** 2 + pos_diff[:, 1] ** 2)
 

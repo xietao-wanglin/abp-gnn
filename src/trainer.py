@@ -130,6 +130,7 @@ class Trainer:
             target_vel=self.cfg.data.features.target_vel,
             stats=self.metadata,
             boundary_type=self.cfg.data.boundary_type,
+            box_length=self.cfg.data.box_length,
             dtype=self.dtype,
             device=self.device,
         )
@@ -147,6 +148,7 @@ class Trainer:
             target_vel=self.cfg.data.features.target_vel,
             stats=self.metadata,
             boundary_type=self.cfg.data.boundary_type,
+            box_length=self.cfg.data.box_length,
             dtype=self.dtype,
             device=self.device,
         )
@@ -330,13 +332,14 @@ class Trainer:
                 p_features = None
             for t in timesteps:
                 x_init = torch.tensor(sim[t], dtype=self.dtype, device=self.device)
-                x_bounded = apply_periodic_boundary(x_init)
+                box_length = self.cfg.data.box_length
+                x_bounded = apply_periodic_boundary(x_init, dims=[box_length, box_length, 2 * torch.pi])
                 initial_states.append(x_bounded)
 
                 traj = torch.tensor(
                     sim[t + 1 : t + 21], dtype=self.dtype, device=self.device
                 )
-                gt_trajectory = apply_periodic_boundary(traj)
+                gt_trajectory = apply_periodic_boundary(traj, dims=[box_length, box_length, 2 * torch.pi])
                 ground_truths.append(gt_trajectory)
                 particle_types.append(p_type)
                 particle_features.append(p_features)
@@ -374,8 +377,8 @@ class Trainer:
                 x = predictions[traj_idx][t].clone()
                 N_i = x.shape[1]
                 trajectory_sizes.append(N_i)
-
-                x_bounded = apply_periodic_boundary(x)
+                box_length = self.cfg.data.box_length
+                x_bounded = apply_periodic_boundary(x, dims=[box_length, box_length, 2 * torch.pi])
 
                 edge_index, edge_attr = compute_graph(
                     x_bounded,
@@ -384,6 +387,7 @@ class Trainer:
                     use_distance=self.cfg.data.features.use_distance,
                     use_rel_pos=self.cfg.data.features.use_rel_pos,
                     boundary_type=self.cfg.data.boundary_type,
+                    box_length=box_length,
                     device=self.device,
                 )
                 features = []
@@ -451,6 +455,8 @@ class Trainer:
                 end_idx = start_idx + N_i
 
                 traj_pred = batched_pred[start_idx:end_idx]
+                if batched_particle_type is not None:
+                    traj_particles = batched_particle_type[start_idx:end_idx]
                 current_state = predictions[traj_idx][t].clone()
                 if not (self.metadata["angular_std"] > 0):
                     theta_vel = (
@@ -462,11 +468,13 @@ class Trainer:
                     full_vel_pred = torch.cat([traj_pred, theta_vel], dim=-1)
                 else:
                     full_vel_pred = traj_pred
+                if batched_particle_type is not None:
+                    full_vel_pred = full_vel_pred * traj_particles.unsqueeze(0).T
                 next_state = current_state + full_vel_pred.T
                 if not self.cfg.data.features.target_vel:
                     next_state = full_vel_pred.T
-
-                predictions[traj_idx][t + 1] = apply_periodic_boundary(next_state)
+                box_length = self.cfg.data.box_length
+                predictions[traj_idx][t + 1] = apply_periodic_boundary(next_state, dims=[box_length, box_length, 2 * torch.pi])
 
                 start_idx = end_idx
 

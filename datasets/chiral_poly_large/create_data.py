@@ -10,13 +10,11 @@ import os
 import json
 
 
-def generate_state(n, delta=0.02):
-    n_boundary = np.random.randint(1, n//4)
-    rot_rate = np.zeros(n)
+def generate_state(n, box_length=1.0, delta=0.08):
+    n_boundary = np.random.randint(1, n)
+    rot_rate = np.ones(n) * 1
     rot_couple = np.zeros(n)
-    sigma = 0.04
-    box_length = 0.4
-    epsilon = 0.1
+    sigma = np.random.uniform(0.01, 0.14, size=(n,))
 
     while True:
         initial_state = np.random.random(3 * n)
@@ -38,22 +36,19 @@ def generate_state(n, delta=0.02):
         rot_rate,
         rot_couple,
         sigma,
-        epsilon,
-        box_length,
         initial_state,
         particle_type,
     )
 
 
 def compute_stats(script_dir):
-    box_length = 0.4
     sim_glob = sorted(glob(f"{script_dir}/data/simulation_train_*"))
     particle_glob = sorted(glob(f"{script_dir}/data/particle_train_*"))
     all_list = []
     for idx, data in enumerate(sim_glob):
         data_arr = np.load(data)
         particle_arr = np.load(particle_glob[idx])
-        bcs = apply_periodic_boundary(torch.tensor(data_arr[::2]), dims=[box_length, box_length, 2 * torch.pi]).numpy()
+        bcs = apply_periodic_boundary(torch.tensor(data_arr[::2])).numpy()
         pos_diff = data_arr[1::2] - bcs
         df = np.sqrt(pos_diff[:, 0] ** 2 + pos_diff[:, 1] ** 2)
 
@@ -87,18 +82,15 @@ if __name__ == "__main__":
             rot_rate,
             rot_couple,
             sigma,
-            epsilon,
-            box_length,
             initial_state,
             particle_type,
         ) = generate_state(n=n)
         sim = WCA(
+            v0=3 * sigma,
             rot_couple=rot_couple,
             rot_rate=rot_rate,
             timesteps=100,
             sigma=sigma,
-            epsilon=epsilon,
-            box_length=box_length,
             particle_type=particle_type,
             seed=i,
             initial_state=initial_state,
@@ -107,6 +99,9 @@ if __name__ == "__main__":
         _times, loc = sim.get_solution_abs()
         np.save(f"{script_dir}/{data_folder}/simulation_train_{i}.npy", loc[10:])
         np.save(f"{script_dir}/{data_folder}/particle_train_{i}.npy", particle_type)
+        np.save(
+            f"{script_dir}/{data_folder}/features_train_{i}.npy", sigma[np.newaxis, ...]
+        )
 
     for i in tqdm(range(test_init, test_sims + test_init), desc="Test Set"):
         np.random.seed(98743 * i + 4500)
@@ -115,18 +110,15 @@ if __name__ == "__main__":
             rot_rate,
             rot_couple,
             sigma,
-            epsilon,
-            box_length,
             initial_state,
             particle_type,
         ) = generate_state(n=n)
         sim = WCA(
+            v0=3 * sigma,
             rot_couple=rot_couple,
             rot_rate=rot_rate,
             timesteps=100,
             sigma=sigma,
-            epsilon=epsilon,
-            box_length=box_length,
             particle_type=particle_type,
             seed=98743 * i + 4500,
             initial_state=initial_state,
@@ -135,6 +127,9 @@ if __name__ == "__main__":
         _times, loc = sim.get_solution_abs()
         np.save(f"{script_dir}/{data_folder}/simulation_test_{i}.npy", loc[10:])
         np.save(f"{script_dir}/{data_folder}/particle_test_{i}.npy", particle_type)
+        np.save(
+            f"{script_dir}/{data_folder}/features_test_{i}.npy", sigma[np.newaxis, ...]
+        )
 
     for i in tqdm(range(long_test_sims), desc="Long Test Set"):
         np.random.seed(983 * i + 2000)
@@ -143,17 +138,14 @@ if __name__ == "__main__":
             rot_rate,
             rot_couple,
             sigma,
-            epsilon,
-            box_length,
             initial_state,
             particle_type,
         ) = generate_state(n=n)
         sim = WCA(
+            v0=3 * sigma,
             rot_couple=rot_couple,
             rot_rate=rot_rate,
             sigma=sigma,
-            epsilon=epsilon,
-            box_length=box_length,
             particle_type=particle_type,
             timesteps=400,
             seed=983 * i + 2000,
@@ -163,12 +155,16 @@ if __name__ == "__main__":
         _times, loc = sim.get_solution_abs()
         np.save(f"{script_dir}/{data_folder}/simulation_long_test_{i}.npy", loc[10:])
         np.save(f"{script_dir}/{data_folder}/particle_long_test_{i}.npy", particle_type)
+        np.save(
+            f"{script_dir}/{data_folder}/features_long_test_{i}.npy",
+            sigma[np.newaxis, ...],
+        )
 
     vel_mean, vel_std = compute_stats(script_dir)
     stats = {
         "vel_mean": vel_mean,
         "vel_std": vel_std,
-        "angular_mean": 0,
+        "angular_mean": 0.1,
         "angular_std": 0,
     }
     metadata_path = os.path.join(script_dir, "metadata.json")

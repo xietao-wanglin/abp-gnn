@@ -147,7 +147,7 @@ if __name__ == "__main__":
     stats = {
         "vel_mean": vel_mean,
         "vel_std": vel_std,
-        "angular_mean": 1,
+        "angular_mean": 0.1,
         "angular_std": 0,
     }
     metadata_path = os.path.join(script_dir, "metadata.json")
