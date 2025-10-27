@@ -333,7 +333,9 @@ class Trainer:
                 x_bounded = apply_periodic_boundary(x_init)
                 initial_states.append(x_bounded)
 
-                traj = torch.tensor(sim[t + 1 : t + 21], dtype=self.dtype, device=self.device)
+                traj = torch.tensor(
+                    sim[t + 1 : t + 21], dtype=self.dtype, device=self.device
+                )
                 gt_trajectory = apply_periodic_boundary(traj)
                 ground_truths.append(gt_trajectory)
                 particle_types.append(p_type)
