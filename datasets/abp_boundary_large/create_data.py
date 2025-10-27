@@ -10,7 +10,7 @@ import os
 import json
 
 
-def generate_state(n, delta=0.02):
+def generate_state(n, delta=0.08):
     n_boundary = np.random.randint(1, n//4)
     rot_rate = np.zeros(n)
     rot_couple = np.zeros(n)
@@ -20,15 +20,13 @@ def generate_state(n, delta=0.02):
 
     while True:
         initial_state = np.random.random(3 * n)
-        initial_state[2::3] *= 2 * np.pi  # angles
-        initial_state[0::3] *= box_length  # x positions
-        initial_state[1::3] *= box_length  # y positions
+        initial_state[2::3] *= 2 * np.pi
+        initial_state[0::3] *= box_length
+        initial_state[1::3] *= box_length
         initial_state = initial_state.reshape(n, 3).T
 
-        positions = initial_state[:2].T  # (n, 2) array of x, y positions
+        positions = initial_state[:2].T
         dists = np.linalg.norm(positions[:, None, :] - positions[None, :, :], axis=-1)
-
-        # Mask out self-distances
         np.fill_diagonal(dists, np.inf)
 
         if np.all(dists > delta):
