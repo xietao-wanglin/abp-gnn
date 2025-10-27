@@ -63,6 +63,7 @@ def discrete_simulation(
     use_pos=False,
     use_angle=True,
     boundary_type=None,
+    box_length=1,
     stats=None,
     dtype=torch.double,
     device="cpu",
@@ -111,7 +112,7 @@ def discrete_simulation(
             x = sim[t]
             y = sim[t + 1]
 
-            x_bounded = apply_periodic_boundary(x, wrap_dims=wrap_dims)
+            x_bounded = apply_periodic_boundary(x, dims=[box_length, box_length, 2*torch.pi], wrap_dims=wrap_dims)
 
             edge_index, edge_attr = compute_graph(
                 x_bounded,
@@ -120,6 +121,7 @@ def discrete_simulation(
                 use_distance=use_distance,
                 use_rel_pos=use_rel_pos,
                 boundary_type=boundary_type,
+                box_length=box_length,
                 device=device,
             )
             if target_vel:

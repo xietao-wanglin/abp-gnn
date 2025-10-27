@@ -1,16 +1,16 @@
 seed: 1
 
-dataset: "chiral_polydisperse"
+dataset: "abp_boundary"
 
 wandb:
-  name: "chiral_polydisperse"
+  name: "abp_boundary"
   track_gradients: true
   gradients_every: 125
 
 model:
   name: "GNS"
   n_layers: 4
-  in_node_nf: 2
+  in_node_nf: 1
   out_node_nf: 2
   in_edge_nf: 3
   hidden_nf: 64
@@ -18,7 +18,7 @@ model:
   decoder_depth: 2
   edge_mlp_depth: 2
   node_mlp_depth: 2
-  dropout: 0.0
+  dropout: 0.6
   norm: false
   n_particle_types: 2
   particle_embedding: 16
@@ -54,4 +54,5 @@ data:
     use_angle: true
     target_vel: true
   boundary_type: [1, 1, 1]
-  box_length: 1
+  box_length: 0.4
+  

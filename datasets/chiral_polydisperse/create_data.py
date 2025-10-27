@@ -55,11 +55,11 @@ def compute_stats(script_dir):
 
 
 if __name__ == "__main__":
-    train_sims = 10
+    train_sims = 1000
     train_init = 0
-    test_sims = 2
+    test_sims = 200
     test_init = 0
-    long_test_sims = 1
+    long_test_sims = 4
     data_folder = "data"
 
     script_dir = os.path.dirname(os.path.abspath(__file__))
@@ -157,7 +157,7 @@ if __name__ == "__main__":
     stats = {
         "vel_mean": vel_mean,
         "vel_std": vel_std,
-        "angular_mean": 1,
+        "angular_mean": 0.1,
         "angular_std": 0,
     }
     metadata_path = os.path.join(script_dir, "metadata.json")

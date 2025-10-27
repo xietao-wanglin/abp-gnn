@@ -54,3 +54,4 @@ data:
     use_angle: true
     target_vel: true
   boundary_type: [1, 1, 1]
+  box_length: 1
