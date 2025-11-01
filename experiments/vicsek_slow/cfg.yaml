@@ -1,17 +1,17 @@
 seed: 1
 
-dataset: "abp_boundary"
+dataset: "vicsek_slow"
 
 wandb:
-  name: "abp_boundary"
+  name: "vicsek_slow"
   track_gradients: true
   gradients_every: 125
 
 model:
   name: "GNS"
-  n_layers: 5
+  n_layers: 4
   in_node_nf: 1
-  out_node_nf: 2
+  out_node_nf: 3
   in_edge_nf: 3
   hidden_nf: 64
   encoder_depth: 2
@@ -20,7 +20,7 @@ model:
   node_mlp_depth: 2
   dropout: 0.0
   norm: false
-  n_particle_types: 2
+  n_particle_types: 1
   particle_embedding: 16
   activation: "silu"
 
@@ -28,7 +28,7 @@ train:
   lr: 1e-3
   weight_decay: 1e-8
   batch_size: 32
-  n_steps: 40000
+  n_steps: 20000
   checkpoint_every: 250
   log_steps: 1
   base_model_path: null
@@ -43,7 +43,7 @@ test:
 
 data:
   subset: true
-  subset_samples: [0, 20, 40, 60]
+  subset_samples: [0, 10, 20, 30, 40, 50, 60]
   cluster:
     method: "radius"
     parameter: 0.1
@@ -54,5 +54,4 @@ data:
     use_angle: true
     target_vel: true
   boundary_type: [1, 1, 1]
-  box_length: 0.4
-  
+  box_length: 1

@@ -11,8 +11,9 @@ import json
 
 
 def generate_state(n, box_length=1.0):
-    rot_rate = np.ones(n) * 1
+    rot_rate = np.ones(n) * 0.1
     rot_couple = np.ones(n) * 0.1
+    couple_radius = 0.1
     sigma = 0.04
 
     initial_state = np.random.random(3 * n)
@@ -25,6 +26,7 @@ def generate_state(n, box_length=1.0):
     return (
         rot_rate,
         rot_couple,
+        couple_radius,
         sigma,
         initial_state,
     )
@@ -69,6 +71,7 @@ if __name__ == "__main__":
         (
             rot_rate,
             rot_couple,
+            couple_radius,
             sigma,
             initial_state,
         ) = generate_state(n=n)
@@ -78,6 +81,7 @@ if __name__ == "__main__":
             timesteps=100,
             epsilon=0.1,
             sigma=sigma,
+            couple_radius=couple_radius,
             seed=i,
             initial_state=initial_state,
         )
@@ -91,6 +95,7 @@ if __name__ == "__main__":
         (
             rot_rate,
             rot_couple,
+            couple_radius,
             sigma,
             initial_state,
         ) = generate_state(n=n)
@@ -100,6 +105,7 @@ if __name__ == "__main__":
             timesteps=100,
             epsilon=0.1,
             sigma=sigma,
+            couple_radius=couple_radius,
             seed=98743 * i + 4500,
             initial_state=initial_state,
         )
@@ -113,6 +119,7 @@ if __name__ == "__main__":
         (
             rot_rate,
             rot_couple,
+            couple_radius,
             sigma,
             initial_state,
         ) = generate_state(n=n)
@@ -120,6 +127,7 @@ if __name__ == "__main__":
             rot_couple=rot_couple,
             rot_rate=rot_rate,
             sigma=sigma,
+            couple_radius=couple_radius,
             epsilon=0.1,
             timesteps=400,
             seed=983 * i + 2000,

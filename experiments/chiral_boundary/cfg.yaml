@@ -1,9 +1,9 @@
 seed: 1
 
-dataset: "chiral_boundary"
+dataset: "abp_boundary"
 
 wandb:
-  name: "chiral_boundary"
+  name: "abp_boundary"
   track_gradients: true
   gradients_every: 125
 
@@ -54,4 +54,4 @@ data:
     use_angle: true
     target_vel: true
   boundary_type: [1, 1, 1]
-  box_length: 1
+  box_length: 0.4
