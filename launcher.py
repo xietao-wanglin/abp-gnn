@@ -1,4 +1,4 @@
-from src.simulation import WCA2
+from src.simulation import WCA
 
 import numpy as np
 
@@ -12,6 +12,7 @@ def generate_state(n, box_length=1.0):
     initial_state = initial_state.reshape(n, 3).T
 
     return initial_state
+
 
 def generate_state_poly(n, box_length=1.0):
     n_boundary = np.random.randint(1, 2)
@@ -36,7 +37,8 @@ def generate_state_poly(n, box_length=1.0):
         particle_type,
     )
 
-def generate_state_chevron(n, box_length=1.0, chevron_angle=np.pi/4, arm_length=0.4):
+
+def generate_state_chevron(n, box_length=1.0, chevron_angle=np.pi / 4, arm_length=0.4):
     n_boundary = n // 5
     n_free = n - n_boundary
 
@@ -64,7 +66,7 @@ def generate_state_chevron(n, box_length=1.0, chevron_angle=np.pi/4, arm_length=
 
     initial_state = np.vstack([x_all, y_all, theta_all])
     particle_type = np.ones(n, dtype=int)
-    particle_type[:len(x_bound)] = 0
+    particle_type[: len(x_bound)] = 0
 
     return initial_state, particle_type
 
@@ -76,20 +78,22 @@ def load_from_file(filepath):
 
 if __name__ == "__main__":
     np.random.seed(0)
-    initial_state = generate_state(2000)
-    sim = WCA2(
+    initial_state = generate_state(30)
+    sim = WCA(
         v0=0.1,
         initial_state=initial_state,
         diffusion_r=0.0,
+        diffusion_t=0.00005,
         rot_rate=0.1,
         sigma=0.04,
         epsilon=0.1,
-        timesteps=410,
+        timesteps=100,
         couple_radius=0.1,
         rot_couple=0.1,
         delta_t=0.1,
-        box_length=3,
+        box_length=0.4,
     )
     sim.solve_dynamics(method="RK45", debug=True)
-    _times, loc = sim.get_solution()
-    np.save("vicsek.npy", loc[10:])
+    sim.create_animation()
+    # _times, loc = sim.get_solution()
+    # np.save("vicsek.npy", loc[10:])

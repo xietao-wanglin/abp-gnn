@@ -112,7 +112,9 @@ def discrete_simulation(
             x = sim[t]
             y = sim[t + 1]
 
-            x_bounded = apply_periodic_boundary(x, dims=[box_length, box_length, 2*torch.pi], wrap_dims=wrap_dims)
+            x_bounded = apply_periodic_boundary(
+                x, dims=[box_length, box_length, 2 * torch.pi], wrap_dims=wrap_dims
+            )
 
             edge_index, edge_attr = compute_graph(
                 x_bounded,
