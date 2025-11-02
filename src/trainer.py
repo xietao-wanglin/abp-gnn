@@ -333,13 +333,17 @@ class Trainer:
             for t in timesteps:
                 x_init = torch.tensor(sim[t], dtype=self.dtype, device=self.device)
                 box_length = self.cfg.data.box_length
-                x_bounded = apply_periodic_boundary(x_init, dims=[box_length, box_length, 2 * torch.pi])
+                x_bounded = apply_periodic_boundary(
+                    x_init, dims=[box_length, box_length, 2 * torch.pi]
+                )
                 initial_states.append(x_bounded)
 
                 traj = torch.tensor(
                     sim[t + 1 : t + 21], dtype=self.dtype, device=self.device
                 )
-                gt_trajectory = apply_periodic_boundary(traj, dims=[box_length, box_length, 2 * torch.pi])
+                gt_trajectory = apply_periodic_boundary(
+                    traj, dims=[box_length, box_length, 2 * torch.pi]
+                )
                 ground_truths.append(gt_trajectory)
                 particle_types.append(p_type)
                 particle_features.append(p_features)
@@ -378,7 +382,9 @@ class Trainer:
                 N_i = x.shape[1]
                 trajectory_sizes.append(N_i)
                 box_length = self.cfg.data.box_length
-                x_bounded = apply_periodic_boundary(x, dims=[box_length, box_length, 2 * torch.pi])
+                x_bounded = apply_periodic_boundary(
+                    x, dims=[box_length, box_length, 2 * torch.pi]
+                )
 
                 edge_index, edge_attr = compute_graph(
                     x_bounded,
@@ -474,7 +480,9 @@ class Trainer:
                 if not self.cfg.data.features.target_vel:
                     next_state = full_vel_pred.T
                 box_length = self.cfg.data.box_length
-                predictions[traj_idx][t + 1] = apply_periodic_boundary(next_state, dims=[box_length, box_length, 2 * torch.pi])
+                predictions[traj_idx][t + 1] = apply_periodic_boundary(
+                    next_state, dims=[box_length, box_length, 2 * torch.pi]
+                )
 
                 start_idx = end_idx
 

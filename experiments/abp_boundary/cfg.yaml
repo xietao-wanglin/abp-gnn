@@ -13,7 +13,7 @@ model:
   in_node_nf: 1
   out_node_nf: 2
   in_edge_nf: 3
-  hidden_nf: 64
+  hidden_nf: 128
   encoder_depth: 2
   decoder_depth: 2
   edge_mlp_depth: 2
