@@ -15,8 +15,9 @@ class GNS_Layer(MessagePassing):
         norm=True,
         edge_mlp_depth=2,
         node_mlp_depth=2,
+        aggr="sum",
     ):
-        super(GNS_Layer, self).__init__(aggr="sum")
+        super(GNS_Layer, self).__init__(aggr=aggr)
         self.hidden_nf = hidden_nf
         self.edge_nf = edge_nf
         self.activation = activation
@@ -88,6 +89,7 @@ class AbsoluteGNS(nn.Module):
         edge_mlp_depth=2,
         node_mlp_depth=2,
         activation=nn.SiLU(),
+        aggr="sum",
         device="cpu",
         dropout=0.0,
         norm=True,
@@ -128,6 +130,7 @@ class AbsoluteGNS(nn.Module):
                     norm,
                     edge_mlp_depth,
                     node_mlp_depth,
+                    aggr,
                 )
             )
 
@@ -178,6 +181,7 @@ class GNS(nn.Module):
         decoder_depth=2,
         edge_mlp_depth=2,
         node_mlp_depth=2,
+        aggr="sum",
         activation=nn.SiLU(),
         device="cpu",
         dropout=0.0,
@@ -228,6 +232,7 @@ class GNS(nn.Module):
                     norm,
                     edge_mlp_depth,
                     node_mlp_depth,
+                    aggr,
                 )
             )
 
@@ -281,6 +286,7 @@ class StochasticGNS(nn.Module):
         edge_mlp_depth=2,
         node_mlp_depth=2,
         activation=nn.SiLU(),
+        aggr="sum",
         device="cpu",
         dropout=0.0,
         norm=True,
@@ -332,6 +338,7 @@ class StochasticGNS(nn.Module):
                     norm,
                     edge_mlp_depth,
                     node_mlp_depth,
+                    aggr,
                 )
             )
 

@@ -15,8 +15,9 @@ class GNN_Layer(MessagePassing):
         norm=True,
         edge_mlp_depth=2,
         node_mlp_depth=2,
+        aggr="sum",
     ):
-        super().__init__(aggr="sum")
+        super().__init__(aggr=aggr)
         self.hidden_nf = hidden_nf
         self.edge_nf = edge_nf
         self.activation = activation
@@ -83,6 +84,7 @@ class GNN(nn.Module):
         decoder_depth=2,
         edge_mlp_depth=2,
         node_mlp_depth=2,
+        aggr="sum",
         activation=nn.SiLU(),
         device="cpu",
         dropout=0.0,
@@ -110,6 +112,7 @@ class GNN(nn.Module):
                     norm,
                     edge_mlp_depth,
                     node_mlp_depth,
+                    aggr,
                 )
                 for _ in range(n_layers)
             ]

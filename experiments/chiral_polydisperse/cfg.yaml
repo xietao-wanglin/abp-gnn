@@ -1,6 +1,6 @@
 seed: 1
 
-dataset: "chiral_polydisperse"
+dataset: "chiral_poly_large"
 
 wandb:
   name: "chiral_polydisperse"
@@ -23,6 +23,7 @@ model:
   n_particle_types: 2
   particle_embedding: 16
   activation: "silu"
+  aggr: "sum"
 
 train:
   lr: 1e-3

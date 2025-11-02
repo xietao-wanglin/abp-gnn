@@ -197,6 +197,7 @@ class Trainer:
                     dropout=self.cfg.model.dropout,
                     norm=self.cfg.model.norm,
                     activation=self.get_activation(self.cfg.model.activation),
+                    aggr=self.cfg.model.aggr,
                 )
                 .to(dtype=self.dtype)
                 .to(device=self.device)
@@ -219,6 +220,7 @@ class Trainer:
                     num_particle_types=self.cfg.model.n_particle_types,
                     particle_type_embedding_size=self.cfg.model.particle_embedding,
                     activation=self.get_activation(self.cfg.model.activation),
+                    aggr=self.cfg.model.aggr,
                 )
                 .to(dtype=self.dtype)
                 .to(device=self.device)
@@ -241,6 +243,7 @@ class Trainer:
                     num_particle_types=self.cfg.model.n_particle_types,
                     particle_type_embedding_size=self.cfg.model.particle_embedding,
                     activation=self.get_activation(self.cfg.model.activation),
+                    aggr=self.cfg.model.aggr,
                 )
                 .to(dtype=self.dtype)
                 .to(device=self.device)
