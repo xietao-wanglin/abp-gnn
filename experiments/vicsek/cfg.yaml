@@ -23,6 +23,7 @@ model:
   n_particle_types: 1
   particle_embedding: 16
   activation: "silu"
+  aggr: "sum"
 
 train:
   lr: 1e-3

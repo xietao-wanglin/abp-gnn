@@ -10,7 +10,7 @@ import os
 import json
 
 
-def generate_state(n, box_length=0.4):
+def generate_state(n, box_length=1.0):
     rot_rate = np.ones(n) * 0.1
     rot_couple = np.ones(n) * 0.1
     couple_radius = 0.1
@@ -52,9 +52,9 @@ def compute_stats(script_dir):
 
 
 if __name__ == "__main__":
-    train_sims = 1000
+    train_sims = 4000
     train_init = 0
-    test_sims = 200
+    test_sims = 800
     test_init = 0
     long_test_sims = 4
     data_folder = "data"
@@ -67,7 +67,7 @@ if __name__ == "__main__":
 
     for i in tqdm(range(train_init, train_sims + train_init), desc="Training Set"):
         np.random.seed(i)
-        n = np.random.randint(15, 30)
+        n = np.random.randint(45, 70)
         (
             rot_rate,
             rot_couple,
@@ -78,22 +78,21 @@ if __name__ == "__main__":
         sim = WCA(
             rot_couple=rot_couple,
             rot_rate=rot_rate,
-            timesteps=100,
+            timesteps=20,
             epsilon=0.1,
-            diffusion_t=0.00005,
             sigma=sigma,
             couple_radius=couple_radius,
             seed=i,
             initial_state=initial_state,
-            box_length=0.4,
+            box_length=1,
         )
         sim.solve_dynamics(method="RK45")
         _times, loc = sim.get_solution_abs()
-        np.save(f"{script_dir}/{data_folder}/simulation_train_{i}.npy", loc[10:])
+        np.save(f"{script_dir}/{data_folder}/simulation_train_{i}.npy", loc)
 
     for i in tqdm(range(test_init, test_sims + test_init), desc="Test Set"):
         np.random.seed(98743 * i + 4500)
-        n = np.random.randint(15, 30)
+        n = np.random.randint(45, 70)
         (
             rot_rate,
             rot_couple,
@@ -104,22 +103,21 @@ if __name__ == "__main__":
         sim = WCA(
             rot_couple=rot_couple,
             rot_rate=rot_rate,
-            timesteps=100,
+            timesteps=20,
             epsilon=0.1,
-            diffusion_t=0.00005,
             sigma=sigma,
             couple_radius=couple_radius,
             seed=98743 * i + 4500,
             initial_state=initial_state,
-            box_length=0.4,
+            box_length=1,
         )
         sim.solve_dynamics(method="RK45")
         _times, loc = sim.get_solution_abs()
-        np.save(f"{script_dir}/{data_folder}/simulation_test_{i}.npy", loc[10:])
+        np.save(f"{script_dir}/{data_folder}/simulation_test_{i}.npy", loc)
 
     for i in tqdm(range(long_test_sims), desc="Long Test Set"):
         np.random.seed(983 * i + 2000)
-        n = np.random.randint(25, 30)
+        n = np.random.randint(45, 70)
         (
             rot_rate,
             rot_couple,
@@ -136,7 +134,7 @@ if __name__ == "__main__":
             timesteps=400,
             seed=983 * i + 2000,
             initial_state=initial_state,
-            box_length=0.4,
+            box_length=1,
         )
         sim.solve_dynamics(method="RK45")
         _times, loc = sim.get_solution_abs()

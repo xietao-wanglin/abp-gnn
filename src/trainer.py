@@ -124,6 +124,7 @@ class Trainer:
             subset_samples=self.cfg.data.subset_samples,
             cluster_method=self.cfg.data.cluster.method,
             p=self.cfg.data.cluster.parameter,
+            noise_std=self.cfg.data.noise_std,
             use_distance=self.cfg.data.features.use_distance,
             use_rel_pos=self.cfg.data.features.use_rel_pos,
             use_pos=self.cfg.data.features.use_pos,
