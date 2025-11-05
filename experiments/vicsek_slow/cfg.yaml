@@ -9,11 +9,11 @@ wandb:
 
 model:
   name: "GNS"
-  n_layers: 4
+  n_layers: 5
   in_node_nf: 1
   out_node_nf: 3
   in_edge_nf: 3
-  hidden_nf: 64
+  hidden_nf: 128
   encoder_depth: 2
   decoder_depth: 2
   edge_mlp_depth: 2
@@ -23,10 +23,10 @@ model:
   n_particle_types: 1
   particle_embedding: 16
   activation: "silu"
-  aggr: "mean"
+  aggr: "sum"
 
 train:
-  lr: 1e-3
+  lr: 1e-4
   weight_decay: 1e-8
   batch_size: 32
   n_steps: 40000
@@ -56,3 +56,4 @@ data:
     target_vel: true
   boundary_type: [1, 1, 1]
   box_length: 1
+  noise_std: 1e-5

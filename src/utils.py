@@ -57,6 +57,7 @@ def discrete_simulation(
     n_samples=4,
     cluster_method="radius",
     p=0.1,
+    noise_std=0.0,
     use_distance=False,
     use_rel_pos=False,
     target_vel=True,
@@ -111,6 +112,11 @@ def discrete_simulation(
         for t in timesteps:
             x = sim[t]
             y = sim[t + 1]
+
+            if noise_std > 0:
+                noise = torch.randn_like(x[:2]) * noise_std
+                x_copy = x.clone()
+                x[:2] = x_copy[:2] + noise
 
             x_bounded = apply_periodic_boundary(
                 x, dims=[box_length, box_length, 2 * torch.pi], wrap_dims=wrap_dims

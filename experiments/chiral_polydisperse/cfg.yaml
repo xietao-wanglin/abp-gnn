@@ -29,7 +29,7 @@ train:
   lr: 1e-3
   weight_decay: 1e-8
   batch_size: 32
-  n_steps: 20000
+  n_steps: 40000
   checkpoint_every: 250
   log_steps: 1
   base_model_path: null
@@ -47,7 +47,7 @@ data:
   subset_samples: [0, 20, 40, 60]
   cluster:
     method: "radius"
-    parameter: 0.1
+    parameter: 0.3
   features:
     use_distance: true
     use_rel_pos: true
