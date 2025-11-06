@@ -1,6 +1,6 @@
 seed: 1
 
-dataset: "vicsek_slow"
+dataset: "vicsek_slow_cluster"
 
 wandb:
   name: "vicsek_slow"
@@ -9,7 +9,7 @@ wandb:
 
 model:
   name: "GNS"
-  n_layers: 5
+  n_layers: 10
   in_node_nf: 1
   out_node_nf: 3
   in_edge_nf: 3
@@ -29,22 +29,22 @@ train:
   lr: 1e-4
   weight_decay: 1e-8
   batch_size: 32
-  n_steps: 40000
-  checkpoint_every: 250
+  n_steps: 400000
+  checkpoint_every: 1000
   log_steps: 1
   base_model_path: null
 
 val:
   batch_size: 200
-  log_steps: 250
+  log_steps: 1000
 
 test:
   active: true
-  log_steps: 250
+  log_steps: 1000
 
 data:
   subset: true
-  subset_samples: [0, 20, 40, 60]
+  subset_samples: [0]
   cluster:
     method: "radius"
     parameter: 0.1
@@ -56,4 +56,4 @@ data:
     target_vel: true
   boundary_type: [1, 1, 1]
   box_length: 1
-  noise_std: 1e-5
+  noise_std: 0

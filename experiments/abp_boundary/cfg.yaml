@@ -26,7 +26,7 @@ model:
   aggr: "sum"
 
 train:
-  lr: 1e-3
+  lr: 1e-4
   weight_decay: 1e-8
   batch_size: 32
   n_steps: 40000
@@ -56,4 +56,5 @@ data:
     target_vel: true
   boundary_type: [1, 1, 1]
   box_length: 0.4
+  noise_std: 0
   
