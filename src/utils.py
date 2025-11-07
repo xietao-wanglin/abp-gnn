@@ -1,8 +1,11 @@
 from src.simulation import BoundaryType, ParticleType
+
+import math
 import torch
+from torch.optim.lr_scheduler import LRScheduler
 from torch_geometric.data import Dataset, Data
 
-from typing import Optional, List, Tuple
+from typing import Optional, List
 
 
 def apply_periodic_boundary(
@@ -63,6 +66,7 @@ def discrete_simulation(
     target_vel=True,
     use_pos=False,
     use_angle=True,
+    use_rel_angle=False,
     boundary_type=None,
     box_length=1,
     stats=None,
@@ -117,13 +121,17 @@ def discrete_simulation(
                 noise = torch.randn_like(x) * noise_std
                 noise[2] *= 2 * torch.pi
                 if particle_type is not None:
-                    noise_mask = (particle_type == ParticleType.BOUNDARY).to(dtype=dtype).view(-1, 1)
+                    noise_mask = (
+                        (particle_type == ParticleType.BOUNDARY)
+                        .to(dtype=dtype)
+                        .view(-1, 1)
+                    )
                     noise = noise * (1 - noise_mask)
                 x_copy = x.clone()
                 x = x_copy + noise
                 y_copy = y.clone()
                 y = y_copy + noise
-            
+
             x_bounded = apply_periodic_boundary(
                 x, dims=[box_length, box_length, 2 * torch.pi], wrap_dims=wrap_dims
             )
@@ -134,6 +142,7 @@ def discrete_simulation(
                 p=p,
                 use_distance=use_distance,
                 use_rel_pos=use_rel_pos,
+                use_rel_theta=use_rel_angle,
                 boundary_type=boundary_type,
                 box_length=box_length,
                 device=device,
@@ -180,36 +189,16 @@ def discrete_simulation(
 
 
 def compute_graph(
-    x: torch.Tensor,
-    method: str,
-    p: float | int,
-    use_distance: Optional[bool] = False,
-    use_rel_pos: Optional[bool] = False,
-    box_length: Optional[float] = 1,
-    boundary_type: Optional[Tuple] = None,
-    device: Optional[str | torch.device] = "cpu",
-) -> Tuple[torch.Tensor, torch.Tensor]:
-    """
-    Compute graph for a given set of node features.
-
-    Parameters
-    ----------
-    x: torch.Tensor
-        Postions (x, y, theta) of shape (3, N).
-    method: str
-        Either 'radius' for radial graph or 'knn' for knn graph.
-    p: float or int, optional
-        Parameter of 'method'.
-    device: str or torch.device, optional
-        Either 'cpu', 'cuda' or torch.device instance, default is 'cpu'.
-
-    Returns
-    -------
-    edge_index: torch.Tensor
-        Tensor of shape (2, E) containing source and target node indices.
-    edge_attr: torch.Tensor
-        Edge features, shape (E, 1).
-    """
+    x,
+    method,
+    p,
+    use_distance=False,
+    use_rel_pos=False,
+    use_rel_theta=False,
+    box_length=1,
+    boundary_type=None,
+    device="cpu",
+):
     if boundary_type is None:
         boundary_type = (
             BoundaryType.PERIODIC,
@@ -217,7 +206,7 @@ def compute_graph(
             BoundaryType.PERIODIC,
         )
 
-    xy, _theta = x[:-1], x[-1]
+    xy, theta = x[:-1], x[-1]
     xy = xy.transpose(0, 1)
     if method == "radius":
         x_coords = xy[:, 0]
@@ -259,6 +248,8 @@ def compute_graph(
 
     row, col = edge_index
     rel_pos = xy[row] - xy[col]
+    theta = theta.unsqueeze(1)
+    rel_theta = theta[row] - theta[col]
     if boundary_type[0] == BoundaryType.PERIODIC:
         rel_pos[:, 0] = rel_pos[:, 0] - box_length * torch.round(
             rel_pos[:, 0] / box_length
@@ -267,6 +258,7 @@ def compute_graph(
         rel_pos[:, 1] = rel_pos[:, 1] - box_length * torch.round(
             rel_pos[:, 1] / box_length
         )
+    rel_theta = rel_theta % (2 * torch.pi)
     rel_dist = torch.sum(rel_pos**2, dim=-1, keepdim=True)
 
     features = []
@@ -274,6 +266,8 @@ def compute_graph(
         features.append(rel_dist)
     if use_rel_pos:
         features.append(rel_pos)
+    if use_rel_theta:
+        features.append(rel_theta)
     edge_attr = (
         torch.cat(features, dim=-1)
         if features
@@ -284,15 +278,6 @@ def compute_graph(
 
 
 class ParticleDataset(Dataset):
-    """
-    Dataset for particle simulations.
-
-    Parameters
-    ----------
-    data_pairs: List
-        List of PyG Data objects.
-    """
-
     def __init__(self, data_pairs, transform=None, pre_transform=None):
         super(ParticleDataset, self).__init__(None, transform, pre_transform)
         self.data_pairs = data_pairs
@@ -302,3 +287,24 @@ class ParticleDataset(Dataset):
 
     def get(self, idx):
         return self.data_pairs[idx]
+
+
+class ExponentialDecayScheduler(LRScheduler):
+    def __init__(
+        self,
+        optimizer,
+        alpha_start=1e-4,
+        alpha_final=1e-6,
+        decay_steps=5e6,
+        last_epoch=-1,
+    ):
+        self.alpha_start = alpha_start
+        self.alpha_final = alpha_final
+        self.decay_steps = decay_steps
+        super().__init__(optimizer, last_epoch)
+
+    def get_lr(self):
+        step = self.last_epoch
+        factor = math.pow(0.1, step / self.decay_steps)
+        lr = self.alpha_final + (self.alpha_start - self.alpha_final) * factor
+        return [lr for _ in self.optimizer.param_groups]
