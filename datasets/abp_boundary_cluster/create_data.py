@@ -10,8 +10,8 @@ import os
 import json
 
 
-def generate_state(n, delta=0.02):
-    n_boundary = np.random.randint(1, n // 4)
+def generate_state(n, delta=0.0):
+    n_boundary = 1
     rot_rate = np.zeros(n)
     rot_couple = np.zeros(n)
     sigma = 0.04
