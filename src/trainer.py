@@ -5,6 +5,7 @@ from src.utils import (
     ParticleDataset,
     apply_periodic_boundary,
     compute_graph,
+    ExponentialDecayScheduler,
 )
 
 
@@ -59,7 +60,12 @@ class Trainer:
             lr=self.cfg.train.lr,
             weight_decay=self.cfg.train.weight_decay,
         )
-        self.scheduler = None
+        self.scheduler = ExponentialDecayScheduler(
+            self.optimizer,
+            alpha_start=self.cfg.train.lr,
+            alpha_final=self.cfg.train.lr_final,
+            decay_steps=self.cfg.train.lr_decay_steps,
+        )
         self.criterion = nn.MSELoss(reduction="none")
         self.metric = nn.L1Loss(reduction="none")
 
@@ -128,6 +134,8 @@ class Trainer:
             use_distance=self.cfg.data.features.use_distance,
             use_rel_pos=self.cfg.data.features.use_rel_pos,
             use_pos=self.cfg.data.features.use_pos,
+            use_angle=self.cfg.data.features.use_angle,
+            use_rel_angle=self.cfg.data.features.use_rel_angle,
             target_vel=self.cfg.data.features.target_vel,
             stats=self.metadata,
             boundary_type=self.cfg.data.boundary_type,
@@ -146,6 +154,8 @@ class Trainer:
             use_distance=self.cfg.data.features.use_distance,
             use_rel_pos=self.cfg.data.features.use_rel_pos,
             use_pos=self.cfg.data.features.use_pos,
+            use_angle=self.cfg.data.features.use_angle,
+            use_rel_angle=self.cfg.data.features.use_rel_angle,
             target_vel=self.cfg.data.features.target_vel,
             stats=self.metadata,
             boundary_type=self.cfg.data.boundary_type,
@@ -295,6 +305,8 @@ class Trainer:
 
         grad_norm = self.get_grad_norm()
         self.optimizer.step()
+        if self.scheduler is not None:
+            self.scheduler.step()
 
         return loss, metric, grad_norm
 
@@ -396,6 +408,7 @@ class Trainer:
                     p=self.cfg.data.cluster.parameter,
                     use_distance=self.cfg.data.features.use_distance,
                     use_rel_pos=self.cfg.data.features.use_rel_pos,
+                    use_rel_theta=self.cfg.data.features.use_rel_angle,
                     boundary_type=self.cfg.data.boundary_type,
                     box_length=box_length,
                     device=self.device,
@@ -498,10 +511,10 @@ class Trainer:
         for pred, gt in zip(self.predictions, self.ground_truths):
             pred_rollout = pred[1:]
 
-            mse_1 = torch.mean((pred_rollout[0, :2] - gt[0, :2]) ** 2)
-            mse_5 = torch.mean((pred_rollout[:5, :2] - gt[:5, :2]) ** 2)
-            mse_10 = torch.mean((pred_rollout[:10, :2] - gt[:10, :2]) ** 2)
-            mse_20 = torch.mean((pred_rollout[:20, :2] - gt[:20, :2]) ** 2)
+            mse_1 = torch.mean((pred_rollout[0] - gt[0]) ** 2)
+            mse_5 = torch.mean((pred_rollout[:5] - gt[:5]) ** 2)
+            mse_10 = torch.mean((pred_rollout[:10] - gt[:10]) ** 2)
+            mse_20 = torch.mean((pred_rollout[:20] - gt[:20]) ** 2)
             mse_all.append([mse_1.item(), mse_5.item(), mse_10.item(), mse_20.item()])
 
         mse_all = np.array(mse_all)
@@ -541,6 +554,8 @@ class Trainer:
                     train_logs = self.logs(loss, metric, type="train")
                     wandb.log(train_logs, step=step)
                     wandb.log({"gradients/total": grad_norm}, step=step)
+                    current_lr = self.optimizer.param_groups[0]["lr"]
+                    wandb.log({"train/lr": current_lr}, step=step)
 
                 if (step % self.cfg.val.log_steps) == 0:
                     self.model.eval()
@@ -569,8 +584,5 @@ class Trainer:
                     metrics = self.test_metrics()
                     wandb.log(metrics, step=step)
                     self.model.train()
-
-            if self.scheduler is not None:
-                self.scheduler.step()
 
         wandb.finish()
