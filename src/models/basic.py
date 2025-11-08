@@ -15,6 +15,7 @@ class MLP(nn.Module):
         activation=nn.SiLU(),
         dropout=0.0,
         out_activation=False,
+        norm=True,
     ):
         super().__init__()
 
@@ -30,6 +31,9 @@ class MLP(nn.Module):
         layers.append(nn.Linear(dim, out_dim))
         if out_activation:
             layers.append(activation)
+
+        if norm:
+            layers.append(nn.LayerNorm(out_dim))
 
         self.net = nn.Sequential(*layers)
 

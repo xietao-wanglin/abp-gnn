@@ -4,7 +4,7 @@ dataset: "vicsek_slow_cluster"
 
 wandb:
   name: "vicsek_slow"
-  track_gradients: true
+  track_gradients: false
   gradients_every: 125
 
 model:
@@ -19,7 +19,7 @@ model:
   edge_mlp_depth: 2
   node_mlp_depth: 2
   dropout: 0.0
-  norm: false
+  norm: true
   n_particle_types: 1
   particle_embedding: 16
   activation: "silu"
