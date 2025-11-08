@@ -1,6 +1,6 @@
 import torch
 import torch.nn as nn
-from torch_geometric.nn import MessagePassing, LayerNorm
+from torch_geometric.nn import MessagePassing
 
 from src.models.basic import MLP, ConditionalMAF
 
@@ -22,7 +22,6 @@ class GNS_Layer(MessagePassing):
         self.edge_nf = edge_nf
         self.activation = activation
         self.dropout = nn.Dropout(dropout) if dropout > 0.0 else nn.Identity()
-        self.norm = LayerNorm(hidden_nf) if norm else None
 
         self.edge_mlp = MLP(
             in_dim=2 * hidden_nf + edge_nf,
@@ -32,6 +31,7 @@ class GNS_Layer(MessagePassing):
             activation=activation,
             dropout=dropout,
             out_activation=True,
+            norm=norm,
         )
         self.node_mlp = MLP(
             in_dim=2 * hidden_nf,
@@ -41,6 +41,7 @@ class GNS_Layer(MessagePassing):
             activation=activation,
             dropout=dropout,
             out_activation=True,
+            norm=norm,
         )
 
     def forward(self, x, edge_index, edge_attr, batch=None):
@@ -64,17 +65,12 @@ class GNS_Layer(MessagePassing):
         return edge_attr
 
     def update(self, aggr_out, x):
-        if self.norm is not None:
-            x_norm = self.norm(x)
-        else:
-            x_norm = x
-
         node_features = torch.cat(
-            [x_norm, aggr_out], dim=-1
-        )  # [N, hidden_nf + hidden_nf]
-        x_new = self.node_mlp(node_features)
+            [x, aggr_out], dim=-1
+        )
+        x = self.node_mlp(node_features)
 
-        return x_new
+        return x
 
 
 class AbsoluteGNS(nn.Module):
@@ -208,6 +204,7 @@ class GNS(nn.Module):
             activation=activation,
             dropout=dropout,
             out_activation=True,
+            norm=norm
         )
 
         self.edge_encoder = MLP(
@@ -218,6 +215,7 @@ class GNS(nn.Module):
             activation=activation,
             dropout=dropout,
             out_activation=True,
+            norm=norm,
         )
 
         self.layers = nn.ModuleList()
@@ -244,6 +242,7 @@ class GNS(nn.Module):
             activation=activation,
             dropout=dropout,
             out_activation=False,
+            norm=False,
         )
 
         self.to(device)
