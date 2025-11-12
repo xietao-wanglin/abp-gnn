@@ -3,17 +3,17 @@ seed: 1
 dataset: "vicsek_dense"
 
 wandb:
-  name: "vicsek_slow"
+  name: "vicsek_large"
   track_gradients: false
   gradients_every: 125
 
 model:
   name: "GNS"
-  n_layers: 4
+  n_layers: 10
   in_node_nf: 1
   out_node_nf: 3
   in_edge_nf: 4
-  hidden_nf: 64
+  hidden_nf: 128
   encoder_depth: 2
   decoder_depth: 2
   edge_mlp_depth: 2
