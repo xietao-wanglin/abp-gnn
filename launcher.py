@@ -78,7 +78,7 @@ def load_from_file(filepath):
 
 if __name__ == "__main__":
     np.random.seed(0)
-    initial_state = generate_state(30)
+    initial_state = generate_state(80)
     sim = WCA(
         v0=0.1,
         initial_state=initial_state,
@@ -87,9 +87,9 @@ if __name__ == "__main__":
         rot_rate=0.0,
         sigma=0.04,
         epsilon=0.1,
-        timesteps=40,
-        couple_radius=0.0,
-        rot_couple=0.0,
+        timesteps=100,
+        couple_radius=0.1,
+        rot_couple=0.1,
         delta_t=0.1,
         box_length=0.4,
     )
