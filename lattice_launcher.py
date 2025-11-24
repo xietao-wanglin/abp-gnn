@@ -35,7 +35,7 @@ def generate_state_with_grid_boundary(
 
 if __name__ == "__main__":
     lcs = [0.2, 0.1253, 0.115, 0.11098, 0.09, 0.15, 0.1]
-    n_replications = 2
+    n_replications = 200
     for lc in lcs:
         for i in range(n_replications):
             particle_type, initial_state, box_length = generate_state_with_grid_boundary(lc=lc)
@@ -57,4 +57,4 @@ if __name__ == "__main__":
             )
             sim.solve_dynamics(method="RK45", debug=False)
             _times, loc = sim.get_solution()
-            np.save(f"./lattice/density_{density}_i.npy")
+            np.save(f"./lattice/density_{density}_{i}.npy", loc)
