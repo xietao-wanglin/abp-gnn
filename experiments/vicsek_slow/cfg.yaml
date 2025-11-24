@@ -1,6 +1,6 @@
 seed: 1
 
-dataset: "vicsek_dense"
+dataset: "vicsek_mix"
 
 wandb:
   name: "vicsek_slow"
@@ -26,7 +26,7 @@ model:
   aggr: "sum"
 
 train:
-  lr: 1e-4
+  lr: 1e-3
   lr_final: 1e-6
   lr_decay_steps: 5e6
   weight_decay: 1e-8

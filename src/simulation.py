@@ -98,7 +98,6 @@ class BaseSimulation:
                     self.particle_system,
                     t_span=(t, t + self.delta_t),
                     y0=self.positions[i].T.reshape(3 * self.n),
-                    t_eval=[t + self.delta_t],
                     method=method,
                     atol=1e-9,
                     rtol=1e-6,
@@ -143,7 +142,7 @@ class BaseSimulation:
         c = color_feature if color_feature is not None else positions[0][2]
         vmin = 0 if color_feature is None else None
         vmax = 2 * np.pi if color_feature is None else None
-        s = 200000 * self.sigma**2 if self.sigma is not None else None
+        s = 200000 * (self.sigma/self.box_length)**2 if self.sigma is not None else None
         points = ax.scatter(
             positions[0][0], positions[0][1], c=c, vmin=vmin, vmax=vmax, alpha=0.6, s=s
         )
@@ -646,7 +645,7 @@ class AVM(BaseSimulation):
         return derivative.T.reshape(3 * self.n)
 
 
-class WCA2(BaseSimulation):
+class SparseWCA(BaseSimulation):
     def __init__(
         self,
         initial_state,
