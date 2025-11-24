@@ -82,7 +82,7 @@ if __name__ == "__main__":
             v0=3 * sigma,
             rot_couple=rot_couple,
             rot_rate=rot_rate,
-            timesteps=100,
+            timesteps=81,
             sigma=sigma,
             particle_type=particle_type,
             seed=i,
@@ -90,7 +90,7 @@ if __name__ == "__main__":
         )
         sim.solve_dynamics(method="RK45")
         _times, loc = sim.get_solution_abs()
-        np.save(f"{script_dir}/{data_folder}/simulation_train_{i}.npy", loc[10:])
+        np.save(f"{script_dir}/{data_folder}/simulation_train_{i}.npy", loc)
         np.save(f"{script_dir}/{data_folder}/particle_train_{i}.npy", particle_type)
 
     for i in tqdm(range(test_init, test_sims + test_init), desc="Test Set"):
@@ -107,7 +107,7 @@ if __name__ == "__main__":
             v0=3 * sigma,
             rot_couple=rot_couple,
             rot_rate=rot_rate,
-            timesteps=100,
+            timesteps=81,
             sigma=sigma,
             particle_type=particle_type,
             seed=98743 * i + 4500,
@@ -115,7 +115,7 @@ if __name__ == "__main__":
         )
         sim.solve_dynamics(method="RK45")
         _times, loc = sim.get_solution_abs()
-        np.save(f"{script_dir}/{data_folder}/simulation_test_{i}.npy", loc[10:])
+        np.save(f"{script_dir}/{data_folder}/simulation_test_{i}.npy", loc)
         np.save(f"{script_dir}/{data_folder}/particle_test_{i}.npy", particle_type)
 
     for i in tqdm(range(long_test_sims), desc="Long Test Set"):
@@ -140,7 +140,7 @@ if __name__ == "__main__":
         )
         sim.solve_dynamics(method="RK45")
         _times, loc = sim.get_solution_abs()
-        np.save(f"{script_dir}/{data_folder}/simulation_long_test_{i}.npy", loc[10:])
+        np.save(f"{script_dir}/{data_folder}/simulation_long_test_{i}.npy", loc)
         np.save(f"{script_dir}/{data_folder}/particle_long_test_{i}.npy", particle_type)
 
     vel_mean, vel_std = compute_stats(script_dir)
