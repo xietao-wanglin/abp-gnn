@@ -36,6 +36,7 @@ class BaseSimulation:
         delta_t=0.1,
         boundary_type=None,
         seed=0,
+        record_every=1,
     ):
         np.random.seed(seed)
         self.n = initial_state.shape[1]
@@ -59,11 +60,18 @@ class BaseSimulation:
         else:
             self.boundary_type = boundary_type
 
-        self.positions = np.zeros(shape=(self.timesteps, 3, self.n))
+        self.record_every = record_every
+        self.positions = np.zeros(
+            shape=(self.timesteps // self.record_every, 3, self.n)
+        )
         self.positions[0] = initial_state
-        self.pos_absolute = np.zeros(shape=(self.timesteps, 3, self.n))
+        self.pos_absolute = np.zeros(
+            shape=(self.timesteps // self.record_every, 3, self.n)
+        )
         self.pos_absolute[0] = initial_state
-        self.times = np.arange(0, self.delta_t * self.timesteps, self.delta_t)
+        self.times = np.arange(
+            0, self.delta_t * self.timesteps, self.delta_t * self.record_every
+        )
 
     def particle_system(self, t, positions):
         raise NotImplementedError
@@ -85,36 +93,43 @@ class BaseSimulation:
     ):
         if debug:
             start = time()
-        for i, t in enumerate(tqdm(self.times[:-1], leave=debug, desc="Simulation")):
+
+        save_idx = 0
+        current_state = self.positions[0].T.reshape(3 * self.n)
+        for i in tqdm(range(self.timesteps-1), leave=debug, desc="Simulation"):
+            t = i * self.delta_t
             if method == "Euler":
-                derivatives = self.particle_system(
-                    t, self.positions[i].T.reshape(3 * self.n)
-                )
-                next_state = (
-                    self.positions[i].T.reshape(3 * self.n) + self.delta_t * derivatives
-                )
+                derivatives = self.particle_system(t, current_state)
+                next_state = current_state + self.delta_t * derivatives
             else:
                 sol = solve_ivp(
                     self.particle_system,
                     t_span=(t, t + self.delta_t),
-                    y0=self.positions[i].T.reshape(3 * self.n),
+                    y0=current_state,
                     method=method,
                     atol=1e-9,
                     rtol=1e-6,
                 )
                 next_state = sol.y[:, -1]
-            self.pos_absolute[i + 1] = next_state.reshape(self.n, 3).T
-            next_state[::3] += np.sqrt(
-                2 * self.diffusion_t * self.delta_t
-            ) * np.random.normal(loc=0, scale=1, size=next_state[::3].shape)
-            next_state[1::3] += np.sqrt(
-                2 * self.diffusion_t * self.delta_t
-            ) * np.random.normal(loc=0, scale=1, size=next_state[::3].shape)
-            next_state[2::3] += np.sqrt(
-                2 * self.diffusion_r * self.delta_t
-            ) * np.random.normal(loc=0, scale=1, size=next_state[::3].shape)
+
+            abs_next = next_state
+            if self.diffusion_t > 0:
+                next_state[::3] += np.sqrt(
+                    2 * self.diffusion_t * self.delta_t
+                ) * np.random.normal(loc=0, scale=1, size=next_state[::3].shape)
+                next_state[1::3] += np.sqrt(
+                    2 * self.diffusion_t * self.delta_t
+                ) * np.random.normal(loc=0, scale=1, size=next_state[::3].shape)
+            if self.diffusion_r > 0:
+                next_state[2::3] += np.sqrt(
+                    2 * self.diffusion_r * self.delta_t
+                ) * np.random.normal(loc=0, scale=1, size=next_state[::3].shape)
             next_state = self.apply_periodic_boundary(next_state)
-            self.positions[i + 1] = next_state.reshape(self.n, 3).T
+            if (i + 1) % self.record_every == 0:
+                save_idx += 1
+                self.positions[save_idx] = next_state.reshape(self.n, 3).T
+                self.pos_absolute[save_idx] = abs_next.reshape(self.n, 3).T
+            current_state = next_state
         if debug:
             end = time()
             print(f"Time elapsed: {end - start:.2f} seconds")
@@ -142,7 +157,11 @@ class BaseSimulation:
         c = color_feature if color_feature is not None else positions[0][2]
         vmin = 0 if color_feature is None else None
         vmax = 2 * np.pi if color_feature is None else None
-        s = 200000 * (self.sigma/self.box_length)**2 if self.sigma is not None else None
+        s = (
+            200000 * (self.sigma / self.box_length) ** 2
+            if self.sigma is not None
+            else None
+        )
         points = ax.scatter(
             positions[0][0], positions[0][1], c=c, vmin=vmin, vmax=vmax, alpha=0.6, s=s
         )
@@ -203,6 +222,7 @@ class WCA(BaseSimulation):
         delta_t=0.1,
         boundary_type=None,
         seed=0,
+        record_every=1,
     ):
         super().__init__(
             initial_state,
@@ -218,6 +238,7 @@ class WCA(BaseSimulation):
             delta_t,
             boundary_type,
             seed,
+            record_every,
         )
         self.epsilon = epsilon
         self.sigma = set_param(sigma, self.n, 0.01)
@@ -309,6 +330,7 @@ class LennardJones(BaseSimulation):
         delta_t=0.1,
         boundary_type=None,
         seed=0,
+        record_every=1,
     ):
         super().__init__(
             initial_state,
@@ -324,6 +346,7 @@ class LennardJones(BaseSimulation):
             delta_t,
             boundary_type,
             seed,
+            record_every,
         )
         self.epsilon = epsilon
         self.sigma = sigma
@@ -412,6 +435,7 @@ class Toy(BaseSimulation):
         delta_t=0.1,
         boundary_type=None,
         seed=0,
+        record_every=1,
     ):
         super().__init__(
             initial_state,
@@ -427,6 +451,7 @@ class Toy(BaseSimulation):
             delta_t,
             boundary_type,
             seed,
+            record_every,
         )
         self.epsilon = epsilon
 
@@ -663,6 +688,7 @@ class SparseWCA(BaseSimulation):
         delta_t=0.1,
         boundary_type=None,
         seed=0,
+        record_every=1,
     ):
         super().__init__(
             initial_state,
@@ -678,6 +704,7 @@ class SparseWCA(BaseSimulation):
             delta_t,
             boundary_type,
             seed,
+            record_every,
         )
         self.epsilon = epsilon
         self.sigma = sigma

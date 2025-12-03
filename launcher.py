@@ -70,9 +70,8 @@ def generate_state_chevron(n, box_length=1.0, chevron_angle=np.pi / 4, arm_lengt
 
     return initial_state, particle_type
 
-def generate_state_with_grid_boundary(
-    lc, n_boundary=400, sigma=0.04
-):
+
+def generate_state_with_grid_boundary(lc, n_boundary=400, sigma=0.04):
     n_side = int(np.sqrt(n_boundary))
     box_length = n_side * lc
 
@@ -100,6 +99,7 @@ def generate_state_with_grid_boundary(
     initial_state = np.vstack([all_x, all_y, all_theta])
     return particle_type, initial_state, box_length
 
+
 def load_from_file(filepath):
     pos = np.load(filepath)
     return pos[0]
@@ -107,23 +107,27 @@ def load_from_file(filepath):
 
 if __name__ == "__main__":
     np.random.seed(0)
-    particle_type, initial_state, box_length = generate_state_with_grid_boundary(lc=0.11098)
-    sim = WCA(
-        v0=3*0.04,
+    n = 64
+    sigma = 0.04
+    rho = 0.28
+    box_length = sigma*np.sqrt(n*np.pi/rho)/2
+    print(box_length)
+    initial_state = generate_state(n=n)
+    sim = SparseWCA(
         initial_state=initial_state,
         diffusion_r=0.0,
         diffusion_t=0.0,
-        rot_rate=1.0,
-        sigma=0.04,
-        epsilon=1.0,
-        timesteps=100,
+        rot_rate=0.0,
+        sigma=sigma,
+        epsilon=0.1,
+        timesteps=151,
         couple_radius=0.0,
         rot_couple=0.0,
-        delta_t=0.1,
+        delta_t=1,
         box_length=box_length,
-        particle_type=particle_type,
+        record_every=1,
     )
     sim.solve_dynamics(method="RK45", debug=True)
     sim.create_animation()
     _times, loc = sim.get_solution()
-    #np.save("analysis/data/chevron.npy", loc[10:])
+    np.save(f"abp_analysis/abp_{n}.npy", loc[1:])
