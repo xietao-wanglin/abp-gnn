@@ -2,9 +2,8 @@ from src.simulation import WCA
 
 import numpy as np
 
-def generate_state_with_grid_boundary(
-    lc, n_boundary=400, sigma=0.04
-):
+
+def generate_state_with_grid_boundary(lc, n_boundary=400, sigma=0.04):
     n_side = int(np.sqrt(n_boundary))
     box_length = n_side * lc
 
@@ -38,10 +37,12 @@ if __name__ == "__main__":
     n_replications = 200
     for lc in lcs:
         for i in range(n_replications):
-            particle_type, initial_state, box_length = generate_state_with_grid_boundary(lc=lc)
+            particle_type, initial_state, box_length = (
+                generate_state_with_grid_boundary(lc=lc)
+            )
             density = round(100 * 100 * np.pi * (0.04) ** 2 / (box_length) ** 2, 2)
             sim = WCA(
-                v0=3*0.04,
+                v0=3 * 0.04,
                 initial_state=initial_state,
                 diffusion_r=0.0,
                 diffusion_t=0.0,

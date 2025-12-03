@@ -39,7 +39,7 @@ def compute_stats(script_dir):
     particle_glob = sorted(glob(f"{script_dir}/data/particle_train_*"))
     all_list = []
     for idx, data in enumerate(sim_glob):
-        data_arr = np.load(data)
+        data_arr = np.load(data)[:80]
         particle_arr = np.load(particle_glob[idx])
         bcs = apply_periodic_boundary(torch.tensor(data_arr[::2])).numpy()
         pos_diff = data_arr[1::2] - bcs
@@ -55,11 +55,11 @@ def compute_stats(script_dir):
 
 
 if __name__ == "__main__":
-    train_sims = 1000
+    train_sims = 0
     train_init = 0
-    test_sims = 200
+    test_sims = 0
     test_init = 0
-    long_test_sims = 4
+    long_test_sims = 0
     data_folder = "data"
 
     script_dir = os.path.dirname(os.path.abspath(__file__))

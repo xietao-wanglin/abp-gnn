@@ -65,9 +65,7 @@ class GNS_Layer(MessagePassing):
         return edge_attr
 
     def update(self, aggr_out, x):
-        node_features = torch.cat(
-            [x, aggr_out], dim=-1
-        )
+        node_features = torch.cat([x, aggr_out], dim=-1)
         x = self.node_mlp(node_features)
 
         return x
@@ -204,7 +202,7 @@ class GNS(nn.Module):
             activation=activation,
             dropout=dropout,
             out_activation=True,
-            norm=norm
+            norm=norm,
         )
 
         self.edge_encoder = MLP(
