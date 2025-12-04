@@ -30,16 +30,16 @@ if __name__ == "__main__":
         initial_state=initial_state,
         diffusion_r=0.0,
         diffusion_t=0.0,
-        rot_rate=0.0,
+        rot_rate=0.1,
         sigma=sigma,
         epsilon=0.1,
-        timesteps=151,
-        couple_radius=0.0,
-        rot_couple=0.0,
+        timesteps=501,
+        couple_radius=0.1,
+        rot_couple=0.1,
         delta_t=1,
         box_length=box_length,
         record_every=1,
     )
     sim.solve_dynamics(method="RK45", debug=False)
     _times, loc = sim.get_solution()
-    np.save(f"abp_analysis/abp_{n}.npy", loc[1:])
+    np.save(f"abp_analysis/vicsek_{n}.npy", loc[1:])
