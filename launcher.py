@@ -107,12 +107,11 @@ def load_from_file(filepath):
 
 if __name__ == "__main__":
     np.random.seed(0)
-    n = 64
+    n = 512
     sigma = 0.04
     rho = 0.28
     box_length = sigma*np.sqrt(n*np.pi/rho)/2
-    print(box_length)
-    initial_state = generate_state(n=n)
+    initial_state = generate_state(n=n, box_length=box_length)
     sim = SparseWCA(
         initial_state=initial_state,
         diffusion_r=0.0,
@@ -120,14 +119,14 @@ if __name__ == "__main__":
         rot_rate=0.0,
         sigma=sigma,
         epsilon=0.1,
-        timesteps=151,
+        timesteps=150,
         couple_radius=0.0,
         rot_couple=0.0,
-        delta_t=1,
+        delta_t=0.1,
         box_length=box_length,
         record_every=1,
     )
     sim.solve_dynamics(method="RK45", debug=True)
     sim.create_animation()
     _times, loc = sim.get_solution()
-    np.save(f"abp_analysis/abp_{n}.npy", loc[1:])
+    #np.save(f"abp_analysis/abp_{n}.npy", loc[1:])
