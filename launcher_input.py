@@ -42,4 +42,4 @@ if __name__ == "__main__":
     )
     sim.solve_dynamics(method="RK45", debug=False)
     _times, loc = sim.get_solution()
-    np.save(f"abp_analysis/vicsek_{n}.npy", loc[1:])
+    np.save(f"abp_analysis/abp_{n}.npy", loc[1:])
