@@ -98,7 +98,7 @@ def create_model(cfg):
 
 
 def generate_state_with_grid_boundary(
-    lc, n_boundary=400, sigma=0.04, central_fraction=0.25
+    lc, n_boundary=400, sigma=0.04
 ):
     n_side = int(np.sqrt(n_boundary))
     box_length = n_side * lc

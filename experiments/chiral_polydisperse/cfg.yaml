@@ -27,6 +27,8 @@ model:
 
 train:
   lr: 1e-3
+  lr_final: 1e-6
+  lr_decay_steps: 5e6
   weight_decay: 1e-8
   batch_size: 32
   n_steps: 40000
@@ -51,8 +53,10 @@ data:
   features:
     use_distance: true
     use_rel_pos: true
+    use_rel_angle: false
     use_pos: false
     use_angle: true
     target_vel: true
   boundary_type: [1, 1, 1]
   box_length: 1
+  noise_std: 0
