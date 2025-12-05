@@ -11,6 +11,7 @@ from src.utils import (
 from src.simulation import ParticleType
 from torch_geometric.data import Data
 import json
+import argparse
 
 
 def get_activation(name):
@@ -211,6 +212,14 @@ def run_sim(particles, initial_state, box_length, n_sims=200):
 
 
 if __name__ == "__main__":
+    parser = argparse.ArgumentParser()
+    parser.add_argument("index", help="index")
+    args = parser.parse_args()
+
+    lcs = [0.2, 0.18, 0.1253, 0.115, 0.11098, 0.09, 0.15, 0.1, 0.095]
+    index = int(args.index)
+    lc = lcs[index]
+
     experiment = "chiral_boundary"
     cfg = OmegaConf.load(f"./experiments/{experiment}/cfg.yaml")
     device = "cpu"
@@ -226,91 +235,90 @@ if __name__ == "__main__":
         f"./experiments/{experiment}/ckp/model_step_{model_step}.pt", map_location="cpu"
     )
     model.load_state_dict(data["model_state_dict"])
-    lcs = [0.2, 0.1253, 0.115, 0.11098, 0.09, 0.15, 0.1]
+    
     n_replications = 200
     model.eval()
-    for lc in lcs:
-        for replic in range(n_replications):
-            particles, initial_state, box_length = generate_state_with_grid_boundary(
-                lc=lc
+    for replic in range(n_replications):
+        particles, initial_state, box_length = generate_state_with_grid_boundary(
+            lc=lc
+        )
+        density = 100 * 100 * torch.pi * (0.04) ** 2 / (box_length) ** 2
+        init = initial_state
+        predictions = torch.zeros(
+            size=(timesteps, 3, init.shape[1]), dtype=torch.float
+        )
+        predictions[0] = init
+        boundary_mask = (particles > ParticleType.BOUNDARY).unsqueeze(1)
+        for i in range(timesteps - 1):
+            x = predictions[i].clone()
+            x_bounded = apply_periodic_boundary(
+                x, dims=[box_length, box_length, 2 * torch.pi]
             )
-            density = 100 * 100 * torch.pi * (0.04) ** 2 / (box_length) ** 2
-            init = initial_state
-            predictions = torch.zeros(
-                size=(timesteps, 3, init.shape[1]), dtype=torch.float
+            N_i = x.shape[1]
+            edge_index, edge_attr = compute_graph(
+                x_bounded,
+                method=cfg.data.cluster.method,
+                p=cfg.data.cluster.parameter,
+                use_distance=cfg.data.features.use_distance,
+                use_rel_pos=cfg.data.features.use_rel_pos,
+                use_rel_theta=cfg.data.features.use_rel_angle,
+                box_length=box_length,
+                boundary_type=cfg.data.boundary_type,
+                device=device,
             )
-            predictions[0] = init
-            boundary_mask = (particles > ParticleType.BOUNDARY).unsqueeze(1)
-            for i in range(timesteps - 1):
-                x = predictions[i].clone()
-                x_bounded = apply_periodic_boundary(
-                    x, dims=[box_length, box_length, 2 * torch.pi]
-                )
-                N_i = x.shape[1]
-                edge_index, edge_attr = compute_graph(
-                    x_bounded,
-                    method=cfg.data.cluster.method,
-                    p=cfg.data.cluster.parameter,
-                    use_distance=cfg.data.features.use_distance,
-                    use_rel_pos=cfg.data.features.use_rel_pos,
-                    use_rel_theta=cfg.data.features.use_rel_angle,
-                    box_length=box_length,
-                    boundary_type=cfg.data.boundary_type,
-                    device=device,
-                )
-                features = []
-                if cfg.data.features.use_pos:
-                    features.append(x_bounded[:2].T)
-                if cfg.data.features.use_angle:
-                    features.append(x_bounded[2].unsqueeze(0).T)
-                if features:
-                    data_input = torch.cat(features, dim=1)
-                else:
-                    batch_size = x_bounded.shape[1]
-                    data_input = torch.ones(batch_size, 1, device=device, dtype=dtype)
-                data = Data(x=data_input, edge_index=edge_index, edge_attr=edge_attr)
-                with torch.no_grad():
-                    forward_pass = model(data, particles)
-                    if stochastic:
-                        forward_pass = model.sample_mean(forward_pass, n_samples=20)
-                    if not cfg.data.features.target_vel:
-                        pred = forward_pass
-                    else:
-                        if metadata["angular_std"] > 0:
-                            vel_pred = (
-                                forward_pass[:, :2] * metadata["vel_std"]
-                                + metadata["vel_mean"]
-                            )
-                            theta_vel_pred = (
-                                forward_pass[:, 2] * metadata["angular_std"]
-                                + metadata["angular_mean"]
-                            )
-                            pred = torch.cat(
-                                [vel_pred, theta_vel_pred.unsqueeze(1)],
-                                dim=1,
-                            )
-                        else:
-                            pred = (
-                                forward_pass * metadata["vel_std"]
-                                + metadata["vel_mean"]
-                            )
-
-                if not (metadata["angular_std"] > 0):
-                    theta_vel = (
-                        torch.ones(N_i, 1, device=device, dtype=dtype)
-                        * metadata["angular_mean"]
-                    )
-                    if not cfg.data.features.target_vel:
-                        theta_vel = theta_vel + x[2].unsqueeze(0).T
-                    full_vel_pred = torch.cat([pred, theta_vel], dim=-1)
-                else:
-                    full_vel_pred = pred
-                next_state = x + (full_vel_pred * boundary_mask).T
+            features = []
+            if cfg.data.features.use_pos:
+                features.append(x_bounded[:2].T)
+            if cfg.data.features.use_angle:
+                features.append(x_bounded[2].unsqueeze(0).T)
+            if features:
+                data_input = torch.cat(features, dim=1)
+            else:
+                batch_size = x_bounded.shape[1]
+                data_input = torch.ones(batch_size, 1, device=device, dtype=dtype)
+            data = Data(x=data_input, edge_index=edge_index, edge_attr=edge_attr)
+            with torch.no_grad():
+                forward_pass = model(data, particles)
+                if stochastic:
+                    forward_pass = model.sample_mean(forward_pass, n_samples=20)
                 if not cfg.data.features.target_vel:
-                    next_state = full_vel_pred.T
-                predictions[i + 1] = apply_periodic_boundary(
-                    next_state, dims=[box_length, box_length, 2 * torch.pi]
+                    pred = forward_pass
+                else:
+                    if metadata["angular_std"] > 0:
+                        vel_pred = (
+                            forward_pass[:, :2] * metadata["vel_std"]
+                            + metadata["vel_mean"]
+                        )
+                        theta_vel_pred = (
+                            forward_pass[:, 2] * metadata["angular_std"]
+                            + metadata["angular_mean"]
+                        )
+                        pred = torch.cat(
+                            [vel_pred, theta_vel_pred.unsqueeze(1)],
+                            dim=1,
+                        )
+                    else:
+                        pred = (
+                            forward_pass * metadata["vel_std"]
+                            + metadata["vel_mean"]
+                        )
+
+            if not (metadata["angular_std"] > 0):
+                theta_vel = (
+                    torch.ones(N_i, 1, device=device, dtype=dtype)
+                    * metadata["angular_mean"]
                 )
-            np.save(
-                f"./lattice_ml/density-{density:.2f}-{replic}.npy", predictions.numpy()
+                if not cfg.data.features.target_vel:
+                    theta_vel = theta_vel + x[2].unsqueeze(0).T
+                full_vel_pred = torch.cat([pred, theta_vel], dim=-1)
+            else:
+                full_vel_pred = pred
+            next_state = x + (full_vel_pred * boundary_mask).T
+            if not cfg.data.features.target_vel:
+                next_state = full_vel_pred.T
+            predictions[i + 1] = apply_periodic_boundary(
+                next_state, dims=[box_length, box_length, 2 * torch.pi]
             )
+        np.save(
+            f"./lattice_ml/density-{density:.2f}-{replic}.npy", predictions.numpy()
+        )
