@@ -107,12 +107,12 @@ def load_from_file(filepath):
 
 if __name__ == "__main__":
     np.random.seed(0)
-    n = 512
+    n = 60
     sigma = 0.04
     rho = 0.28
     box_length = sigma*np.sqrt(n*np.pi/rho)/2
     initial_state = generate_state(n=n, box_length=box_length)
-    sim = SparseWCA(
+    sim = WCA(
         initial_state=initial_state,
         diffusion_r=0.0,
         diffusion_t=0.0,
