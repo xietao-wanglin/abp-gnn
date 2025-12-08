@@ -37,8 +37,10 @@ class BaseSimulation:
         boundary_type=None,
         seed=0,
         record_every=1,
+        start_record=0,
     ):
         np.random.seed(seed)
+        self.initial_state = initial_state
         self.n = initial_state.shape[1]
         self.v0 = set_param(v0, self.n, 0.1)
         self.rot_rate = set_param(rot_rate, self.n, 1)
@@ -61,16 +63,21 @@ class BaseSimulation:
             self.boundary_type = boundary_type
 
         self.record_every = record_every
-        self.positions = np.zeros(
-            shape=(self.timesteps // self.record_every, 3, self.n)
+        self.start_record = max(0, start_record)
+
+        total_records = max(
+            0, (self.timesteps - self.start_record) // self.record_every + 1
         )
-        self.positions[0] = initial_state
-        self.pos_absolute = np.zeros(
-            shape=(self.timesteps // self.record_every, 3, self.n)
-        )
-        self.pos_absolute[0] = initial_state
+        self.positions = np.zeros(shape=(total_records, 3, self.n))
+        self.pos_absolute = np.zeros(shape=(total_records, 3, self.n))
+        if self.start_record == 0:
+            self.positions[0] = initial_state
+            self.pos_absolute[0] = initial_state
+
         self.times = np.arange(
-            0, self.delta_t * self.timesteps, self.delta_t * self.record_every
+            self.start_record * self.delta_t,
+            self.timesteps * self.delta_t,
+            self.delta_t * self.record_every,
         )
 
     def particle_system(self, t, positions):
@@ -97,8 +104,8 @@ class BaseSimulation:
             start = time()
 
         save_idx = 0
-        current_state = self.positions[0].T.reshape(3 * self.n)
-        pbar = tqdm(range(self.timesteps-1), leave=debug, desc="Simulation")
+        current_state = self.initial_state.T.reshape(3 * self.n)
+        pbar = tqdm(range(self.timesteps - 1), leave=debug, desc="Simulation")
         for i in pbar:
             t = i * self.delta_t
             if method == "Euler":
@@ -114,9 +121,11 @@ class BaseSimulation:
                     rtol=rtol,
                 )
                 next_state = sol.y[:, -1]
-            
+
             if debug:
-                pbar.set_postfix({"avg_timestep": np.mean(np.diff(sol.t)), "n_steps": sol.t.shape[0]})
+                pbar.set_postfix(
+                    {"avg_timestep": np.mean(np.diff(sol.t)), "n_steps": sol.t.shape[0]}
+                )
 
             abs_next = next_state
             if self.diffusion_t > 0:
@@ -131,10 +140,15 @@ class BaseSimulation:
                     2 * self.diffusion_r * self.delta_t
                 ) * np.random.normal(loc=0, scale=1, size=next_state[::3].shape)
             next_state = self.apply_periodic_boundary(next_state)
-            if (i + 1) % self.record_every == 0:
+
+            if (
+                i >= self.start_record
+                and (i - self.start_record) % self.record_every == 0
+            ):
+                if not (i == 0 and self.start_record > 0):
+                    self.positions[save_idx] = next_state.reshape(self.n, 3).T
+                    self.pos_absolute[save_idx] = abs_next.reshape(self.n, 3).T
                 save_idx += 1
-                self.positions[save_idx] = next_state.reshape(self.n, 3).T
-                self.pos_absolute[save_idx] = abs_next.reshape(self.n, 3).T
             current_state = next_state
         if debug:
             end = time()
@@ -197,7 +211,7 @@ class BaseSimulation:
             return points
 
         if timesteps is None:
-            timesteps = int(self.timesteps / every)
+            timesteps = times.shape[0] // every
         animation = FuncAnimation(f, update, interval=50, frames=timesteps)
         if filename is not None:
             animation.save(f"./videos/{filename}", writer="ffmpeg", fps=20)
@@ -229,6 +243,7 @@ class WCA(BaseSimulation):
         boundary_type=None,
         seed=0,
         record_every=1,
+        start_record=0,
     ):
         super().__init__(
             initial_state,
@@ -245,6 +260,7 @@ class WCA(BaseSimulation):
             boundary_type,
             seed,
             record_every,
+            start_record,
         )
         self.epsilon = epsilon
         self.sigma = set_param(sigma, self.n, 0.01)
@@ -337,6 +353,7 @@ class LennardJones(BaseSimulation):
         boundary_type=None,
         seed=0,
         record_every=1,
+        start_record=0,
     ):
         super().__init__(
             initial_state,
@@ -353,6 +370,7 @@ class LennardJones(BaseSimulation):
             boundary_type,
             seed,
             record_every,
+            start_record,
         )
         self.epsilon = epsilon
         self.sigma = sigma
@@ -442,6 +460,7 @@ class Toy(BaseSimulation):
         boundary_type=None,
         seed=0,
         record_every=1,
+        start_record=0,
     ):
         super().__init__(
             initial_state,
@@ -458,6 +477,7 @@ class Toy(BaseSimulation):
             boundary_type,
             seed,
             record_every,
+            start_record,
         )
         self.epsilon = epsilon
 
@@ -695,6 +715,7 @@ class SparseWCA(BaseSimulation):
         boundary_type=None,
         seed=0,
         record_every=1,
+        start_record=0,
     ):
         super().__init__(
             initial_state,
@@ -711,6 +732,7 @@ class SparseWCA(BaseSimulation):
             boundary_type,
             seed,
             record_every,
+            start_record,
         )
         self.epsilon = epsilon
         self.sigma = sigma

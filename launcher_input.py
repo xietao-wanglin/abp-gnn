@@ -3,6 +3,7 @@ from src.simulation import SparseWCA
 import numpy as np
 import argparse
 
+
 def generate_state(n, box_length=1.0):
     initial_state = np.random.random(3 * n)
     initial_state[2::3] *= 2 * np.pi
@@ -15,7 +16,6 @@ def generate_state(n, box_length=1.0):
 
 
 if __name__ == "__main__":
-
     parser = argparse.ArgumentParser()
     parser.add_argument("power", help="Power k in n = 2^k")
     args = parser.parse_args()
@@ -24,7 +24,7 @@ if __name__ == "__main__":
     n = 2**power
     sigma = 0.04
     rho = 0.28
-    box_length = sigma*np.sqrt(n*np.pi/rho)/2
+    box_length = sigma * np.sqrt(n * np.pi / rho) / 2
     initial_state = generate_state(n=n, box_length=box_length)
     sim = SparseWCA(
         initial_state=initial_state,
@@ -42,4 +42,4 @@ if __name__ == "__main__":
     )
     sim.solve_dynamics(method="RK45", debug=False)
     _times, loc = sim.get_solution()
-    np.save(f"abp_analysis/abp_{n}.npy", loc[1:])
+    np.save(f"abp_analysis/abp_{n}.npy", loc)
