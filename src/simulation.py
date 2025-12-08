@@ -90,13 +90,16 @@ class BaseSimulation:
         self,
         method="RK45",
         debug=False,
+        atol=1e-9,
+        rtol=1e-6,
     ):
         if debug:
             start = time()
 
         save_idx = 0
         current_state = self.positions[0].T.reshape(3 * self.n)
-        for i in tqdm(range(self.timesteps-1), leave=debug, desc="Simulation"):
+        pbar = tqdm(range(self.timesteps-1), leave=debug, desc="Simulation")
+        for i in pbar:
             t = i * self.delta_t
             if method == "Euler":
                 derivatives = self.particle_system(t, current_state)
@@ -107,10 +110,13 @@ class BaseSimulation:
                     t_span=(t, t + self.delta_t),
                     y0=current_state,
                     method=method,
-                    atol=1e-9,
-                    rtol=1e-6,
+                    atol=atol,
+                    rtol=rtol,
                 )
                 next_state = sol.y[:, -1]
+            
+            if debug:
+                pbar.set_postfix({"avg_timestep": np.mean(np.diff(sol.t)), "n_steps": sol.t.shape[0]})
 
             abs_next = next_state
             if self.diffusion_t > 0:
