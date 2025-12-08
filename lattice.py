@@ -98,9 +98,7 @@ def create_model(cfg):
     return model
 
 
-def generate_state_with_grid_boundary(
-    lc, n_boundary=400, sigma=0.04
-):
+def generate_state_with_grid_boundary(lc, n_boundary=400, sigma=0.04):
     n_side = int(np.sqrt(n_boundary))
     box_length = n_side * lc
 
@@ -126,7 +124,11 @@ def generate_state_with_grid_boundary(
     particle_type[-1] = 1
 
     initial_state = np.vstack([all_x, all_y, all_theta])
-    return torch.tensor(particle_type), torch.tensor(initial_state), box_length
+    return (
+        torch.tensor(particle_type, dtype=torch.int),
+        torch.tensor(initial_state, dtype=torch.float),
+        box_length,
+    )
 
 
 def run_sim(particles, initial_state, box_length, n_sims=200):
@@ -226,6 +228,10 @@ if __name__ == "__main__":
     dtype = torch.float
     model_step = 120_000
     timesteps = 16000
+    record_every = 10
+    start_record = 12000
+
+    total_records = max(0, (timesteps - start_record) // record_every + 1)
 
     with open(f"./datasets/{cfg.dataset}/metadata.json") as f:
         metadata = json.load(f)
@@ -235,26 +241,26 @@ if __name__ == "__main__":
         f"./experiments/{experiment}/ckp/model_step_{model_step}.pt", map_location="cpu"
     )
     model.load_state_dict(data["model_state_dict"])
-    
+
     n_replications = 200
     model.eval()
     for replic in range(n_replications):
-        particles, initial_state, box_length = generate_state_with_grid_boundary(
-            lc=lc
-        )
+        particles, initial_state, box_length = generate_state_with_grid_boundary(lc=lc)
         density = 100 * 100 * torch.pi * (0.04) ** 2 / (box_length) ** 2
         init = initial_state
-        predictions = torch.zeros(
-            size=(timesteps, 3, init.shape[1]), dtype=torch.float
-        )
-        predictions[0] = init
+
+        predictions = torch.zeros(size=(total_records, 3, init.shape[1]), dtype=dtype)
+
+        if start_record == 0:
+            predictions[0] = init
         boundary_mask = (particles > ParticleType.BOUNDARY).unsqueeze(1)
+        current_state = init
+        save_idx = 0
         for i in range(timesteps - 1):
-            x = predictions[i].clone()
             x_bounded = apply_periodic_boundary(
-                x, dims=[box_length, box_length, 2 * torch.pi]
+                current_state, dims=[box_length, box_length, 2 * torch.pi]
             )
-            N_i = x.shape[1]
+            N_i = current_state.shape[1]
             edge_index, edge_attr = compute_graph(
                 x_bounded,
                 method=cfg.data.cluster.method,
@@ -298,10 +304,7 @@ if __name__ == "__main__":
                             dim=1,
                         )
                     else:
-                        pred = (
-                            forward_pass * metadata["vel_std"]
-                            + metadata["vel_mean"]
-                        )
+                        pred = forward_pass * metadata["vel_std"] + metadata["vel_mean"]
 
             if not (metadata["angular_std"] > 0):
                 theta_vel = (
@@ -309,16 +312,19 @@ if __name__ == "__main__":
                     * metadata["angular_mean"]
                 )
                 if not cfg.data.features.target_vel:
-                    theta_vel = theta_vel + x[2].unsqueeze(0).T
+                    theta_vel = theta_vel + current_state[2].unsqueeze(0).T
                 full_vel_pred = torch.cat([pred, theta_vel], dim=-1)
             else:
                 full_vel_pred = pred
-            next_state = x + (full_vel_pred * boundary_mask).T
+            next_state = current_state + (full_vel_pred * boundary_mask).T
             if not cfg.data.features.target_vel:
                 next_state = full_vel_pred.T
-            predictions[i + 1] = apply_periodic_boundary(
+            next_state = apply_periodic_boundary(
                 next_state, dims=[box_length, box_length, 2 * torch.pi]
             )
-        np.save(
-            f"./lattice_ml/density-{density:.2f}-{replic}.npy", predictions.numpy()
-        )
+            if i >= start_record and (i - start_record) % record_every == 0:
+                if not (i == 0 and start_record > 0):
+                    predictions[save_idx] = next_state
+                save_idx += 1
+            current_state = next_state
+        np.save(f"./lattice_ml/density-{density:.2f}-{replic}.npy", predictions.numpy())

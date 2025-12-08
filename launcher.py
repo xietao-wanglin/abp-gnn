@@ -110,7 +110,7 @@ if __name__ == "__main__":
     n = 60
     sigma = 0.04
     rho = 0.28
-    box_length = sigma*np.sqrt(n*np.pi/rho)/2
+    box_length = sigma * np.sqrt(n * np.pi / rho) / 2
     initial_state = generate_state(n=n, box_length=box_length)
     sim = WCA(
         initial_state=initial_state,
@@ -124,9 +124,10 @@ if __name__ == "__main__":
         rot_couple=0.0,
         delta_t=0.1,
         box_length=box_length,
-        record_every=1,
+        record_every=10,
+        start_record=5,
     )
     sim.solve_dynamics(method="RK45", debug=True)
     sim.create_animation()
     _times, loc = sim.get_solution()
-    #np.save(f"abp_analysis/abp_{n}.npy", loc[1:])
+    np.save("abp_analysis/test.npy", loc[1:])
