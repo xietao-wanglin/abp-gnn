@@ -2,7 +2,7 @@ from src.fast_simulation import Toy
 import jax
 import jax.numpy as jnp
 import numpy as np
-
+jax.config.update("jax_enable_x64", True)
 
 def generate_state(key, n, box_length=1.0):
     key, subkey = jax.random.split(key)
@@ -26,5 +26,5 @@ if __name__ == "__main__":
         rot_rate=0.0,
         epsilon=0.025,
     )
-    out = sim.solve_dynamics(t_end=20, dt=1e-4, save_dt=0.1)
+    out = sim.solve_dynamics(t_end=20, dt=1e-4, save_dt=0.1, debug=True)
     np.save("test/toy.npy", out)

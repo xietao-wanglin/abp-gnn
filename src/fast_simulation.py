@@ -17,13 +17,18 @@ class FastSimulation(eqx.Module):
     def particle_system(self, t, y, args):
         raise NotImplementedError
 
-    def solve_dynamics(self, t_end, dt=None, save_dt=None, min_save_t=None):
+    @eqx.filter_jit
+    def solve_dynamics(self, t_end, dt=None, save_dt=None, min_save_t=None, debug=None):
         if dt is None:
             dt = 1e-4
         if save_dt is None:
             save_dt = dt
         if min_save_t is None:
             min_save_t = 0
+        if (debug is None) or (not debug):
+            progress_bar = dfx.NoProgressMeter()
+        if debug:
+            progress_bar = dfx.TqdmProgressMeter()
         times = jnp.arange(min_save_t, t_end, save_dt)
         solver = dfx.Dopri5()
         y0 = self.initial_state
@@ -38,6 +43,7 @@ class FastSimulation(eqx.Module):
             y0=y0,
             saveat=saveat,
             max_steps=10_000_000,
+            progress_meter=progress_bar
         )
 
         y_hist = sol.ys
