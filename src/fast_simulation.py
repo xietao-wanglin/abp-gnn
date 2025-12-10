@@ -82,16 +82,17 @@ class Toy(FastSimulation):
         self.rot_rate = rot_rate
         self.epsilon = epsilon
 
+    @eqx.filter_jit
     def potential(self, dx, dy):
-        f_mag = -self.epsilon
-        fx = f_mag * dx
-        fy = f_mag * dy
+        fx = -self.epsilon * dx
+        fy = -self.epsilon * dy
 
         fx_total = jnp.sum(fx, axis=1)
         fy_total = jnp.sum(fy, axis=1)
 
         return fx_total, fy_total
 
+    @eqx.filter_jit
     def particle_system(self, t, y, args):
         _x = y[0]
         _y = y[1]
@@ -143,18 +144,18 @@ class WCA(FastSimulation):
         self.couple_radius = couple_radius
         self.couple_strength = couple_strength
         self.particle_type = particle_type
+        self.r_cutoff = (2 ** (1 / 6)) * self.sigma
 
+    @eqx.filter_jit
     def potential(self, dx, dy, theta):
         distances = jnp.sqrt(dx**2 + dy**2)
-        r_cutoff = (2 ** (1 / 6)) * self.sigma
-
         safe_dist = jnp.where(distances == 0.0, 1.0, distances)
 
         inv_r = 1.0 / safe_dist
         inv_r6 = (self.sigma * inv_r) ** 6
         inv_r12 = inv_r6**2
         f_mag = 24 * self.epsilon * (2 * inv_r12 - inv_r6) * inv_r
-        mask = (distances < r_cutoff) & (distances > 0.0)
+        mask = (distances < self.r_cutoff) & (distances > 0.0)
         f_mag = f_mag * mask
         fx = f_mag * dx / safe_dist
         fy = f_mag * dy / safe_dist
@@ -170,6 +171,7 @@ class WCA(FastSimulation):
 
         return fx_total, fy_total, alignment
 
+    @eqx.filter_jit
     def particle_system(self, t, y, args):
         _x = y[0]
         _y = y[1]

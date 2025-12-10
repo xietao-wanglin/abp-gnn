@@ -23,17 +23,17 @@ def generate_state(key, n, box_length=1.0):
 
 if __name__ == "__main__":
     key = jax.random.PRNGKey(0)
-    particle_type, initial_state, _key = generate_state(key, n=4096)
+    particle_type, initial_state, _key = generate_state(key, n=60)
     sim = WCA(
         initial_state=initial_state,
         v0=0.1,
         rot_rate=0.0,
         epsilon=0.1,
         sigma=0.04,
-        couple_radius=0.1,
-        couple_strength=0.1,
+        couple_radius=0.0,
+        couple_strength=0.0,
         particle_type=particle_type,
-        box_length=4.2875173484203435,
+        box_length=1,
     )
     out = sim.solve_dynamics(t_end=40, dt=1e-4, save_dt=0.1, debug=True)
     np.save("test/abp.npy", out)
