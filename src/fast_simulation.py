@@ -25,7 +25,7 @@ class FastSimulation(eqx.Module):
         raise NotImplementedError
 
     @eqx.filter_jit
-    def solve_dynamics(self, t_end, dt=None, save_dt=None, min_save_t=None, debug=None):
+    def solve_dynamics(self, t_end, dt=None, save_dt=None, min_save_t=None, use_controller=None,debug=None):
         if dt is None:
             dt = 1e-4
         if save_dt is None:
@@ -36,8 +36,13 @@ class FastSimulation(eqx.Module):
             progress_bar = dfx.NoProgressMeter()
         if debug:
             progress_bar = dfx.TqdmProgressMeter()
+        if use_controller is None:
+            stepsize_controller = dfx.ConstantStepSize()
+        if use_controller:
+            stepsize_controller = dfx.PIDController(rtol=1e-3, atol=1e-6)
         times = jnp.arange(min_save_t, t_end, save_dt)
         solver = dfx.Dopri5()
+        
         y0 = self.initial_state
         saveat = dfx.SaveAt(ts=times)
         term = dfx.ODETerm(self.particle_system)
@@ -49,6 +54,7 @@ class FastSimulation(eqx.Module):
             dt0=dt,
             y0=y0,
             saveat=saveat,
+            stepsize_controller=stepsize_controller,
             max_steps=10_000_000,
             progress_meter=progress_bar,
         )
