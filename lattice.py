@@ -327,4 +327,9 @@ if __name__ == "__main__":
                     predictions[save_idx] = next_state
                 save_idx += 1
             current_state = next_state
-        np.save(f"./lattice_ml/density-{density:.2f}-{replic}.npy", predictions.numpy())
+        np.savez(
+            f"./lattice_ml/density-{density:.2f}-{replic}.npz",
+            predictions=predictions.numpy(),
+            box_length=box_length,
+            initial_state=initial_state.numpy(),
+        )
