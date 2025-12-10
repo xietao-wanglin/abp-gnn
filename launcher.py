@@ -107,10 +107,11 @@ def load_from_file(filepath):
 
 if __name__ == "__main__":
     np.random.seed(0)
-    n = 60
+    n = 30
     sigma = 0.04
     rho = 0.28
     box_length = sigma * np.sqrt(n * np.pi / rho) / 2
+    box_length = 1
     initial_state = generate_state(n=n, box_length=box_length)
     sim = WCA(
         initial_state=initial_state,
@@ -119,15 +120,15 @@ if __name__ == "__main__":
         rot_rate=0.0,
         sigma=sigma,
         epsilon=0.1,
-        timesteps=150,
+        timesteps=200000,
         couple_radius=0.0,
         rot_couple=0.0,
-        delta_t=0.1,
+        delta_t=1e-4,
         box_length=box_length,
-        record_every=10,
-        start_record=5,
+        record_every=1000,
+        start_record=0,
     )
     sim.solve_dynamics(method="RK45", debug=True)
     sim.create_animation()
     _times, loc = sim.get_solution()
-    np.save("abp_analysis/test.npy", loc[1:])
+    # np.save("abp_analysis/test.npy", loc[1:])
