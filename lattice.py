@@ -242,7 +242,7 @@ if __name__ == "__main__":
     )
     model.load_state_dict(data["model_state_dict"])
 
-    n_replications = 200
+    n_replications = 1
     model.eval()
     for replic in range(n_replications):
         particles, initial_state, box_length = generate_state_with_grid_boundary(lc=lc)
