@@ -25,24 +25,32 @@ class FastSimulation(eqx.Module):
         raise NotImplementedError
 
     @eqx.filter_jit
-    def solve_dynamics(self, t_end, dt=None, save_dt=None, min_save_t=None, use_controller=None,debug=None):
+    def solve_dynamics(
+        self,
+        t_end,
+        dt=None,
+        save_dt=None,
+        min_save_t=None,
+        use_controller=None,
+        debug=None,
+    ):
         if dt is None:
             dt = 1e-4
         if save_dt is None:
             save_dt = dt
         if min_save_t is None:
             min_save_t = 0
-        if (debug is None) or (not debug):
-            progress_bar = dfx.NoProgressMeter()
-        if debug:
-            progress_bar = dfx.TqdmProgressMeter()
-        if use_controller is None:
-            stepsize_controller = dfx.ConstantStepSize()
-        if use_controller:
-            stepsize_controller = dfx.PIDController(rtol=1e-3, atol=1e-6)
+
+        progress_bar = dfx.TqdmProgressMeter() if debug else dfx.NoProgressMeter()
+
+        stepsize_controller = (
+            dfx.PIDController(rtol=1e-6, atol=1e-9)
+            if use_controller
+            else dfx.ConstantStepSize()
+        )
         times = jnp.arange(min_save_t, t_end, save_dt)
         solver = dfx.Dopri5()
-        
+
         y0 = self.initial_state
         saveat = dfx.SaveAt(ts=times)
         term = dfx.ODETerm(self.particle_system)
@@ -144,10 +152,10 @@ class WCA(FastSimulation):
         self.couple_radius = couple_radius
         self.couple_strength = couple_strength
         self.particle_type = particle_type
-        self.r_cutoff = (2 ** (1 / 6)) * self.sigma
 
     @eqx.filter_jit
     def potential(self, dx, dy, theta):
+        r_cutoff = (2 ** (1 / 6)) * self.sigma
         distances = jnp.sqrt(dx**2 + dy**2)
         safe_dist = jnp.where(distances == 0.0, 1.0, distances)
 
@@ -155,7 +163,7 @@ class WCA(FastSimulation):
         inv_r6 = (self.sigma * inv_r) ** 6
         inv_r12 = inv_r6**2
         f_mag = 24 * self.epsilon * (2 * inv_r12 - inv_r6) * inv_r
-        mask = (distances < self.r_cutoff) & (distances > 0.0)
+        mask = (distances < r_cutoff) & (distances > 0.0)
         f_mag = f_mag * mask
         fx = f_mag * dx / safe_dist
         fy = f_mag * dy / safe_dist
@@ -192,9 +200,7 @@ class WCA(FastSimulation):
         dxdt += fx_total
         dydt += fy_total
 
-        dthetadt = (
-            jnp.full_like(_theta, self.rot_rate) + self.couple_strength * alignment
-        )
+        dthetadt = self.rot_rate + self.couple_strength * alignment
 
         dxdt *= boundary_mask
         dydt *= boundary_mask
