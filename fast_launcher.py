@@ -26,6 +26,7 @@ def generate_state(key, n, rho=0.28, sigma=0.04):
 if __name__ == "__main__":
     key = jax.random.PRNGKey(0)
     sigma = 0.04
+    dt = 1e-6
     particle_type, box_length, initial_state, _key = generate_state(
         key, n=60, rho=0.28, sigma=sigma
     )
@@ -41,6 +42,6 @@ if __name__ == "__main__":
         box_length=box_length,
     )
     out = sim.solve_dynamics(
-        t_end=20, dt=1e-4, save_dt=0.1, debug=True, use_controller=True
+        t_end=20, dt=dt, save_dt=0.1, debug=True, use_controller=None
     )
-    np.save("test/abp.npy", out)
+    np.save(f"step/dt_{dt}.npy", out)
