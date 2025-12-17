@@ -229,7 +229,7 @@ if __name__ == "__main__":
     model_step = 120_000
     timesteps = 16000
     record_every = 10
-    start_record = 12000
+    start_record = 0
 
     total_records = max(0, (timesteps - start_record) // record_every + 1)
 
@@ -242,7 +242,7 @@ if __name__ == "__main__":
     )
     model.load_state_dict(data["model_state_dict"])
 
-    n_replications = 1
+    n_replications = 200
     model.eval()
     for replic in range(n_replications):
         particles, initial_state, box_length = generate_state_with_grid_boundary(lc=lc)

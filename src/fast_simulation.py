@@ -63,7 +63,7 @@ class FastSimulation(eqx.Module):
             y0=y0,
             saveat=saveat,
             stepsize_controller=stepsize_controller,
-            max_steps=10_000_000,
+            max_steps=None,
             progress_meter=progress_bar,
         )
 
