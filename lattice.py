@@ -218,7 +218,11 @@ if __name__ == "__main__":
     parser.add_argument("index", help="index")
     args = parser.parse_args()
 
-    lcs = [0.2, 0.18, 0.1253, 0.115, 0.11098, 0.09, 0.15, 0.1, 0.095]
+    start_lc = 0.095
+    end_lc = 0.2
+    n_lc = 80
+
+    lcs = [start_lc + i * (end_lc - start_lc) / (n_lc - 1) for i in range(n_lc)]
     index = int(args.index)
     lc = lcs[index]
 
