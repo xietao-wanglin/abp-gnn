@@ -119,6 +119,7 @@ class Toy(FastSimulation):
         derivative = jnp.vstack([dxdt, dydt, dthetadt])
         return derivative
 
+
 class WCA(FastSimulation):
     v0: float
     rot_rate: float
@@ -127,7 +128,7 @@ class WCA(FastSimulation):
     couple_radius: float
     couple_strength: float
     particle_type: jax.Array
-    
+
     r_cutoff_sq: float
     couple_radius_sq: float
     force_prefactor: float
@@ -153,11 +154,11 @@ class WCA(FastSimulation):
         self.couple_radius = couple_radius
         self.couple_strength = couple_strength
         self.particle_type = particle_type
-        
+
         self.r_cutoff_sq = ((2 ** (1 / 6)) * sigma) ** 2
-        self.couple_radius_sq = couple_radius ** 2
+        self.couple_radius_sq = couple_radius**2
         self.force_prefactor = 24 * epsilon
-        self.sigma_sq = sigma ** 2
+        self.sigma_sq = sigma**2
 
     def particle_system(self, t, y, args):
         pos = y[:2].T
@@ -171,8 +172,10 @@ class WCA(FastSimulation):
         safe_dist_sq = jnp.where(wca_mask, dist_sq, 1.0)
         inv_r2 = 1.0 / safe_dist_sq
         sigma_r6 = (self.sigma_sq * inv_r2) ** 3
-        f_term = (self.force_prefactor * (2 * sigma_r6**2 - sigma_r6) * inv_r2) * wca_mask
-        
+        f_term = (
+            self.force_prefactor * (2 * sigma_r6**2 - sigma_r6) * inv_r2
+        ) * wca_mask
+
         fx_total = jnp.sum(f_term * diff[..., 0], axis=1)
         fy_total = jnp.sum(f_term * diff[..., 1], axis=1)
 
