@@ -7,9 +7,13 @@ import equinox as eqx
 
 jax.config.update("jax_enable_x64", False)
 
+
 @eqx.filter_jit
 def run_sim(model, t_end, save_dt):
-    return model.solve_dynamics(t_end=t_end, dt=1e-12, save_dt=save_dt, debug=False, use_controller=True)
+    return model.solve_dynamics(
+        t_end=t_end, dt=1e-12, save_dt=save_dt, debug=False, use_controller=True
+    )
+
 
 def generate_state(n, rho=0.28, sigma=0.04, rep=0, random=None):
     data = np.load(f"initial_conditions/n_{n}_{rep}.npy")
@@ -49,7 +53,7 @@ if __name__ == "__main__":
         particle_type=particle_type,
         box_length=box_length,
     )
-    
+
     out = run_sim(sim, t_end=t_end, save_dt=save_dt)
     res = np.array(out)
     np.savez(
@@ -65,15 +69,19 @@ if __name__ == "__main__":
     # 1. Measure Eager Execution (Standard Python loop overhead)
     # Note: This is usually very slow.
     start = time.perf_counter()
-    out_eager = sim.solve_dynamics(t_end=1.0, dt=1e-12, save_dt=0.1, use_controller=True, debug=True)
-    out_eager.block_until_ready() # Wait for GPU to finish
+    out_eager = sim.solve_dynamics(
+        t_end=1.0, dt=1e-12, save_dt=0.1, use_controller=True, debug=True
+    )
+    out_eager.block_until_ready()  # Wait for GPU to finish
     eager_time = time.perf_counter() - start
 
     # 2. Measure JIT Compilation + First Run
     # This includes the time XLA takes to optimize your code.
     @eqx.filter_jit
     def run_sim(model):
-        return model.solve_dynamics(t_end=1.0, dt=1e-12, save_dt=0.1, use_controller=True, debug=True)
+        return model.solve_dynamics(
+            t_end=1.0, dt=1e-12, save_dt=0.1, use_controller=True, debug=True
+        )
 
     start = time.perf_counter()
     out_first = run_sim(sim).block_until_ready()

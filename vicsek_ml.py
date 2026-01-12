@@ -17,6 +17,7 @@ from tqdm import tqdm
 device = "cpu"
 dtype = torch.float
 
+
 def generate_state(n, rho=0.28, sigma=0.04, rep=0):
     data = np.load(f"initial_conditions/n_{n}_{rep}.npy")
     initial_state = torch.tensor(data, device=device, dtype=dtype)
@@ -25,6 +26,7 @@ def generate_state(n, rho=0.28, sigma=0.04, rep=0):
     particle_type = torch.ones(n, device=device, dtype=torch.int)
 
     return particle_type, box_length, initial_state
+
 
 def get_activation(name):
     if name == "silu":
@@ -111,7 +113,6 @@ def create_model(cfg):
 
 
 if __name__ == "__main__":
-
     n = 2048
     n_replications = 20
 

@@ -10,26 +10,25 @@ import equinox as eqx
 
 jax.config.update("jax_enable_x64", False)
 
+
 @eqx.filter_jit
 def run_fast_sim(sim_obj, t_end, dt, save_dt):
     return sim_obj.solve_dynamics(
-        t_end=t_end, 
-        dt=dt, 
-        save_dt=save_dt, 
-        debug=True,
-        use_controller=True
+        t_end=t_end, dt=dt, save_dt=save_dt, debug=True, use_controller=True
     )
+
 
 def unwrap(traj, box_length):
     unwrapped = np.zeros_like(traj)
     unwrapped[0] = traj[0]
 
     for i in range(1, len(traj)):
-        dx = traj[i] - traj[i-1]
+        dx = traj[i] - traj[i - 1]
         dx -= np.round(dx / box_length) * box_length
-        unwrapped[i] = unwrapped[i-1] + dx
+        unwrapped[i] = unwrapped[i - 1] + dx
 
     return unwrapped
+
 
 def generate_state_with_grid_boundary(lc, n_boundary=400, sigma=0.04):
     n_side = int(np.sqrt(n_boundary))
@@ -63,7 +62,6 @@ def generate_state_with_grid_boundary(lc, n_boundary=400, sigma=0.04):
 
 
 if __name__ == "__main__":
-
     sigma = 0.04
     v0 = 3 * sigma
     parser = argparse.ArgumentParser()
@@ -79,8 +77,8 @@ if __name__ == "__main__":
     n_replications = 2
     all_disp = []
     for i in range(n_replications):
-        particle_type, initial_state, box_length = (
-            generate_state_with_grid_boundary(lc=lc)
+        particle_type, initial_state, box_length = generate_state_with_grid_boundary(
+            lc=lc
         )
         density = round(100 * 100 * np.pi * (0.04) ** 2 / (box_length) ** 2, 2)
         sim = WCA(
@@ -101,7 +99,7 @@ if __name__ == "__main__":
         disp = traj_unwrap - traj_unwrap[0]
         msd = np.sum(disp**2, axis=1)
         all_disp.append(msd)
-    
+
     all_disp = np.vstack(all_disp)
     msd_mean = all_disp.mean(axis=0)
     dt = 1
@@ -111,7 +109,7 @@ if __name__ == "__main__":
     msd_fit = msd_mean[start:]
     slope, intercept = np.polyfit(t_fit, msd_fit, 1)
     D = slope / 4.0
-    D_adj = D/(sigma*v0)
+    D_adj = D / (sigma * v0)
 
     save_path = "lattice/data.csv"
     with open(save_path, "a", newline="") as f:

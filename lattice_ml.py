@@ -12,6 +12,7 @@ from src.simulation import ParticleType
 from torch_geometric.data import Data
 import json
 import argparse
+import csv
 
 
 def get_activation(name):
@@ -98,9 +99,10 @@ def create_model(cfg):
     return model
 
 
-def generate_state_with_grid_boundary(lc, n_boundary=400, sigma=0.04):
+def generate_state_with_grid_boundary(phi, n_boundary=400, sigma=0.04):
+    box_length = np.sqrt(100 * 100 * torch.pi * (0.04) ** 2 / phi)
     n_side = int(np.sqrt(n_boundary))
-    box_length = n_side * lc
+    lc = box_length / 20
 
     x = np.linspace(0, box_length - lc, n_side) + lc / 2
     y = np.linspace(0, box_length - lc, n_side) + lc / 2
@@ -131,86 +133,16 @@ def generate_state_with_grid_boundary(lc, n_boundary=400, sigma=0.04):
     )
 
 
-def run_sim(particles, initial_state, box_length, n_sims=200):
-    all_sims = torch.zeros(n_sims, timesteps)
-    for j in range(n_sims):
-        init = initial_state
-        predictions = torch.zeros(size=(timesteps, 3, init.shape[1]), dtype=torch.float)
-        predictions[0] = init
+def unwrap(traj, box_length):
+    unwrapped = np.zeros_like(traj)
+    unwrapped[0] = traj[0]
 
-        boundary_mask = (particles > ParticleType.BOUNDARY).unsqueeze(1)
-        model.eval()
-        for i in range(timesteps - 1):
-            x = predictions[i].clone()
-            x_bounded = apply_periodic_boundary(
-                x, dims=[box_length, box_length, 2 * torch.pi]
-            )
-            N_i = x.shape[1]
-            edge_index, edge_attr = compute_graph(
-                x_bounded,
-                method=cfg.data.cluster.method,
-                p=cfg.data.cluster.parameter,
-                use_distance=cfg.data.features.use_distance,
-                use_rel_pos=cfg.data.features.use_rel_pos,
-                box_length=box_length,
-                boundary_type=cfg.data.boundary_type,
-                device=device,
-            )
-            features = []
-            if cfg.data.features.use_pos:
-                features.append(x_bounded[:2].T)
-            if cfg.data.features.use_angle:
-                features.append(x_bounded[2].unsqueeze(0).T)
-            if features:
-                data_input = torch.cat(features, dim=1)
-            else:
-                batch_size = x_bounded.shape[1]
-                data_input = torch.ones(batch_size, 1, device=device, dtype=dtype)
-            data = Data(x=data_input, edge_index=edge_index, edge_attr=edge_attr)
-            with torch.no_grad():
-                forward_pass = model(data, particles)
-                if stochastic:
-                    forward_pass = model.sample_mean(forward_pass, n_samples=20)
-                if not cfg.data.features.target_vel:
-                    pred = forward_pass
-                else:
-                    if metadata["angular_std"] > 0:
-                        vel_pred = (
-                            forward_pass[:, :2] * metadata["vel_std"]
-                            + metadata["vel_mean"]
-                        )
-                        theta_vel_pred = (
-                            forward_pass[:, 2] * metadata["angular_std"]
-                            + metadata["angular_mean"]
-                        )
-                        pred = torch.cat(
-                            [vel_pred, theta_vel_pred.unsqueeze(1)],
-                            dim=1,
-                        )
-                    else:
-                        pred = forward_pass * metadata["vel_std"] + metadata["vel_mean"]
+    for i in range(1, len(traj)):
+        dx = traj[i] - traj[i - 1]
+        dx -= np.round(dx / box_length) * box_length
+        unwrapped[i] = unwrapped[i - 1] + dx
 
-            if not (metadata["angular_std"] > 0):
-                theta_vel = (
-                    torch.ones(N_i, 1, device=device, dtype=dtype)
-                    * metadata["angular_mean"]
-                )
-                if not cfg.data.features.target_vel:
-                    theta_vel = theta_vel + x[2].unsqueeze(0).T
-                full_vel_pred = torch.cat([pred, theta_vel], dim=-1)
-            else:
-                full_vel_pred = pred
-            next_state = x + (full_vel_pred * boundary_mask).T
-            if not cfg.data.features.target_vel:
-                next_state = full_vel_pred.T
-            predictions[i + 1] = apply_periodic_boundary(
-                next_state, dims=[box_length, box_length, 2 * torch.pi]
-            )
-
-        disp = predictions[:, :2, -1] - predictions[0, :2, -1].unsqueeze(0)
-        squared_displacement = torch.sum(disp**2, dim=1)
-        all_sims[j] = squared_displacement
-    return all_sims
+    return unwrapped
 
 
 if __name__ == "__main__":
@@ -218,13 +150,13 @@ if __name__ == "__main__":
     parser.add_argument("index", help="index")
     args = parser.parse_args()
 
-    start_lc = 0.095
-    end_lc = 0.2
-    n_lc = 80
+    start_phi = 1
+    end_phi = 21
+    n_phi = 81
 
-    lcs = [start_lc + i * (end_lc - start_lc) / (n_lc - 1) for i in range(n_lc)]
+    phis = [start_phi + i * (end_phi - start_phi) / (n_phi - 1) for i in range(n_phi)]
     index = int(args.index)
-    lc = lcs[index]
+    phi = phis[index]
 
     experiment = "chiral_boundary"
     cfg = OmegaConf.load(f"./experiments/{experiment}/cfg.yaml")
@@ -248,9 +180,11 @@ if __name__ == "__main__":
 
     n_replications = 200
     model.eval()
+    msd_mean = None
     for replic in range(n_replications):
-        particles, initial_state, box_length = generate_state_with_grid_boundary(lc=lc)
-        density = 100 * 100 * torch.pi * (0.04) ** 2 / (box_length) ** 2
+        particles, initial_state, box_length = generate_state_with_grid_boundary(
+            phi=phi
+        )
         init = initial_state
 
         predictions = torch.zeros(size=(total_records, 3, init.shape[1]), dtype=dtype)
@@ -331,9 +265,28 @@ if __name__ == "__main__":
                     predictions[save_idx] = next_state
                 save_idx += 1
             current_state = next_state
-        np.savez(
-            f"./lattice_ml/density-{density:.2f}-{replic}.npz",
-            predictions=predictions.numpy(),
-            box_length=box_length,
-            initial_state=initial_state.numpy(),
-        )
+
+        res = np.array(predictions)
+        traj = res[:-1, :2, -1]
+        traj_unwrap = unwrap(traj, box_length)
+        disp = traj_unwrap - traj_unwrap[0]
+        msd = np.sum(disp**2, axis=1)
+        if msd_mean is None:
+            msd_mean = msd
+        else:
+            msd_mean = msd_mean + (msd - msd_mean) / (i + 1)
+
+    dt = 1
+    time = np.arange(len(msd_mean)) * dt
+    start = 1200
+    t_fit = time[start:]
+    msd_fit = msd_mean[start:]
+    slope, intercept = np.polyfit(t_fit, msd_fit, 1)
+    D = slope / 4.0
+    sigma = 0.04
+    v0 = 3 * sigma
+    D_adj = D / (sigma * v0)
+    save_path = "lattice_ml/data.csv"
+    with open(save_path, "a", newline="") as f:
+        writer = csv.writer(f)
+        writer.writerow([phi, D_adj])
