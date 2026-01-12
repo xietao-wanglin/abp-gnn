@@ -24,7 +24,6 @@ class FastSimulation(eqx.Module):
     def particle_system(self, t, y, args):
         raise NotImplementedError
 
-    @eqx.filter_jit
     def solve_dynamics(
         self,
         t_end,
@@ -49,7 +48,7 @@ class FastSimulation(eqx.Module):
             else dfx.ConstantStepSize()
         )
         times = jnp.arange(min_save_t, t_end, save_dt)
-        solver = dfx.Dopri5()
+        solver = dfx.Heun()
 
         y0 = self.initial_state
         saveat = dfx.SaveAt(ts=times)
@@ -90,7 +89,6 @@ class Toy(FastSimulation):
         self.rot_rate = rot_rate
         self.epsilon = epsilon
 
-    @eqx.filter_jit
     def potential(self, dx, dy):
         fx = -self.epsilon * dx
         fy = -self.epsilon * dy
@@ -100,7 +98,6 @@ class Toy(FastSimulation):
 
         return fx_total, fy_total
 
-    @eqx.filter_jit
     def particle_system(self, t, y, args):
         _x = y[0]
         _y = y[1]
@@ -122,7 +119,6 @@ class Toy(FastSimulation):
         derivative = jnp.vstack([dxdt, dydt, dthetadt])
         return derivative
 
-
 class WCA(FastSimulation):
     v0: float
     rot_rate: float
@@ -131,6 +127,11 @@ class WCA(FastSimulation):
     couple_radius: float
     couple_strength: float
     particle_type: jax.Array
+    
+    r_cutoff_sq: float
+    couple_radius_sq: float
+    force_prefactor: float
+    sigma_sq: float
 
     def __init__(
         self,
@@ -152,59 +153,36 @@ class WCA(FastSimulation):
         self.couple_radius = couple_radius
         self.couple_strength = couple_strength
         self.particle_type = particle_type
+        
+        self.r_cutoff_sq = ((2 ** (1 / 6)) * sigma) ** 2
+        self.couple_radius_sq = couple_radius ** 2
+        self.force_prefactor = 24 * epsilon
+        self.sigma_sq = sigma ** 2
 
-    @eqx.filter_jit
-    def potential(self, dx, dy, theta):
-        r_cutoff = (2 ** (1 / 6)) * self.sigma
-        distances = jnp.sqrt(dx**2 + dy**2)
-        safe_dist = jnp.where(distances == 0.0, 1.0, distances)
-
-        inv_r = 1.0 / safe_dist
-        inv_r6 = (self.sigma * inv_r) ** 6
-        inv_r12 = inv_r6**2
-        f_mag = 24 * self.epsilon * (2 * inv_r12 - inv_r6) * inv_r
-        mask = (distances < r_cutoff) & (distances > 0.0)
-        f_mag = f_mag * mask
-        fx = f_mag * dx / safe_dist
-        fy = f_mag * dy / safe_dist
-
-        fx_total = jnp.sum(fx, axis=1)
-        fy_total = jnp.sum(fy, axis=1)
-
-        neighbor_mask = (distances < self.couple_radius) & (distances > 0)
-
-        alignment = jnp.sum(
-            neighbor_mask * jnp.sin(theta[None, :] - theta[:, None]), axis=1
-        )
-
-        return fx_total, fy_total, alignment
-
-    @eqx.filter_jit
     def particle_system(self, t, y, args):
-        _x = y[0]
-        _y = y[1]
-        _theta = y[2]
+        pos = y[:2].T
+        theta = y[2]
+
+        diff = pos[:, None, :] - pos[None, :, :]
+        diff = diff - self.box_length * jnp.rint(diff / self.box_length)
+        dist_sq = jnp.sum(diff**2, axis=-1)
+
+        wca_mask = (dist_sq < self.r_cutoff_sq) & (dist_sq > 0.0)
+        safe_dist_sq = jnp.where(wca_mask, dist_sq, 1.0)
+        inv_r2 = 1.0 / safe_dist_sq
+        sigma_r6 = (self.sigma_sq * inv_r2) ** 3
+        f_term = (self.force_prefactor * (2 * sigma_r6**2 - sigma_r6) * inv_r2) * wca_mask
+        
+        fx_total = jnp.sum(f_term * diff[..., 0], axis=1)
+        fy_total = jnp.sum(f_term * diff[..., 1], axis=1)
+
+        angle_diff = jnp.sin(theta[None, :] - theta[:, None])
+        align_mask = (dist_sq < self.couple_radius_sq) & (dist_sq > 0.0)
+        alignment = jnp.sum(angle_diff * align_mask, axis=1)
 
         boundary_mask = self.particle_type > ParticleType.BOUNDARY
-        dxdt = self.v0 * jnp.cos(_theta)
-        dydt = self.v0 * jnp.sin(_theta)
+        dxdt = (self.v0 * jnp.cos(theta) + fx_total) * boundary_mask
+        dydt = (self.v0 * jnp.sin(theta) + fy_total) * boundary_mask
+        dthetadt = (self.rot_rate + self.couple_strength * alignment) * boundary_mask
 
-        dx = _x[:, None] - _x[None, :]
-        dy = _y[:, None] - _y[None, :]
-
-        dx = dx - self.box_length * jnp.round(dx / self.box_length)
-        dy = dy - self.box_length * jnp.round(dy / self.box_length)
-
-        fx_total, fy_total, alignment = self.potential(dx, dy, _theta)
-
-        dxdt += fx_total
-        dydt += fy_total
-
-        dthetadt = self.rot_rate + self.couple_strength * alignment
-
-        dxdt *= boundary_mask
-        dydt *= boundary_mask
-        dthetadt *= boundary_mask
-
-        derivative = jnp.vstack([dxdt, dydt, dthetadt])
-        return derivative
+        return jnp.stack([dxdt, dydt, dthetadt])

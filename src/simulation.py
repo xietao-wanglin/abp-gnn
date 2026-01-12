@@ -35,12 +35,10 @@ class BaseSimulation:
         timesteps=100,
         delta_t=0.1,
         boundary_type=None,
-        seed=0,
         record_every=1,
         start_record=0,
     ):
-        np.random.seed(seed)
-        self.initial_state = initial_state
+        self.initial_state = initial_state.copy()
         self.n = initial_state.shape[1]
         self.v0 = set_param(v0, self.n, 0.1)
         self.rot_rate = set_param(rot_rate, self.n, 1)
@@ -71,8 +69,8 @@ class BaseSimulation:
         self.positions = np.zeros(shape=(total_records, 3, self.n))
         self.pos_absolute = np.zeros(shape=(total_records, 3, self.n))
         if self.start_record == 0:
-            self.positions[0] = initial_state
-            self.pos_absolute[0] = initial_state
+            self.positions[0] = initial_state.copy()
+            self.pos_absolute[0] = initial_state.copy()
 
         self.times = np.arange(
             self.start_record * self.delta_t,
@@ -103,7 +101,7 @@ class BaseSimulation:
         if debug:
             start = time()
 
-        save_idx = 0
+        save_idx = 1
         current_state = self.initial_state.T.reshape(3 * self.n)
         pbar = tqdm(range(self.timesteps - 1), leave=debug, desc="Simulation")
         for i in pbar:
@@ -127,7 +125,7 @@ class BaseSimulation:
                     {"avg_timestep": np.mean(np.diff(sol.t)), "n_steps": sol.t.shape[0]}
                 )
 
-            abs_next = next_state
+            abs_next = next_state.copy()
             if self.diffusion_t > 0:
                 next_state[::3] += np.sqrt(
                     2 * self.diffusion_t * self.delta_t
@@ -241,7 +239,6 @@ class WCA(BaseSimulation):
         timesteps=100,
         delta_t=0.1,
         boundary_type=None,
-        seed=0,
         record_every=1,
         start_record=0,
     ):
@@ -258,7 +255,6 @@ class WCA(BaseSimulation):
             timesteps,
             delta_t,
             boundary_type,
-            seed,
             record_every,
             start_record,
         )
@@ -351,7 +347,6 @@ class LennardJones(BaseSimulation):
         timesteps=100,
         delta_t=0.1,
         boundary_type=None,
-        seed=0,
         record_every=1,
         start_record=0,
     ):
@@ -368,7 +363,6 @@ class LennardJones(BaseSimulation):
             timesteps,
             delta_t,
             boundary_type,
-            seed,
             record_every,
             start_record,
         )
@@ -458,7 +452,6 @@ class Toy(BaseSimulation):
         timesteps=100,
         delta_t=0.1,
         boundary_type=None,
-        seed=0,
         record_every=1,
         start_record=0,
     ):
@@ -475,7 +468,6 @@ class Toy(BaseSimulation):
             timesteps,
             delta_t,
             boundary_type,
-            seed,
             record_every,
             start_record,
         )
@@ -557,7 +549,6 @@ class AVM(BaseSimulation):
         timesteps=100,
         delta_t=0.1,
         boundary_type=None,
-        seed=0,
     ):
         super().__init__(
             initial_state,
@@ -569,7 +560,6 @@ class AVM(BaseSimulation):
             timesteps=timesteps,
             delta_t=delta_t,
             boundary_type=boundary_type,
-            seed=seed,
         )
 
         # AVM-specific parameters
@@ -713,7 +703,6 @@ class SparseWCA(BaseSimulation):
         timesteps=100,
         delta_t=0.1,
         boundary_type=None,
-        seed=0,
         record_every=1,
         start_record=0,
     ):
@@ -730,7 +719,6 @@ class SparseWCA(BaseSimulation):
             timesteps,
             delta_t,
             boundary_type,
-            seed,
             record_every,
             start_record,
         )

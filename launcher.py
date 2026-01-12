@@ -107,28 +107,29 @@ def load_from_file(filepath):
 
 if __name__ == "__main__":
     np.random.seed(0)
-    n = 16
+    n = 2048
     sigma = 0.04
     rho = 0.28
-    reps = 2
+    reps = 20
     box_length = sigma * np.sqrt(n * np.pi / rho) / 2
-    for i in range(1, reps):
+    for i in range(0, reps):
         initial_state = generate_state(n=n, box_length=box_length)
         sim = WCA(
             initial_state=initial_state,
+            v0=0.0,
             diffusion_r=0.0,
             diffusion_t=0.0,
             rot_rate=0.0,
             sigma=sigma,
             epsilon=0.1,
-            timesteps=501,
+            timesteps=10,
             couple_radius=0.0,
             rot_couple=0.0,
-            delta_t=1,
+            delta_t=0.1,
             box_length=box_length,
             record_every=1,
             start_record=0,
         )
         sim.solve_dynamics(method="RK45", debug=True)
         _times, loc = sim.get_solution()
-        np.save(f"abp_analysis/abp_{n}_{i}.npy", loc[1:])
+        np.save(f"initial_conditions/n_{n}_{i}.npy", loc[-2])

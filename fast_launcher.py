@@ -28,6 +28,7 @@ def generate_state(n, rho=0.28, sigma=0.04, rep=0, random=None):
 if __name__ == "__main__":
     reps = 20
     n = 128
+    save_dt = 1
     sigma = 0.04
 
     for i in range(0, reps):
@@ -46,9 +47,14 @@ if __name__ == "__main__":
             box_length=box_length,
         )
         out = sim.solve_dynamics(
-            t_end=501, dt=1e-12, save_dt=1, debug=True, use_controller=True
+            t_end=501, dt=1e-12, save_dt=save_dt, debug=True, use_controller=True
         )
         res = np.array(out.block_until_ready())
-        np.save(f"abp_analysis/vicsek_{n}_{i}.npy", res)
-
+        np.savez(
+            f"vicsek/data/det_{n}_{i}.npz",
+            predictions=res,
+            box_length=box_length,
+            initial_state=np.array(initial_state),
+            dt=save_dt,
+        )
         jax.clear_caches()

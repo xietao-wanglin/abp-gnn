@@ -14,7 +14,7 @@ def generate_state(n, box_length=1.0):
     n_boundary = np.random.randint(1, n)
     rot_rate = np.ones(n) * 1
     rot_couple = np.zeros(n)
-    sigma = np.random.uniform(0.01, 0.14, size=(n,))
+    sigma = np.random.uniform(0.01, 0.07, size=(n,))
 
     initial_state = np.random.random(3 * n)
     initial_state[2::3] *= 2 * np.pi
@@ -90,7 +90,7 @@ if __name__ == "__main__":
         )
         sim.solve_dynamics(method="RK45")
         _times, loc = sim.get_solution_abs()
-        np.save(f"{script_dir}/{data_folder}/simulation_train_{i}.npy", loc[10:])
+        np.save(f"{script_dir}/{data_folder}/simulation_train_{i}.npy", loc)
         np.save(f"{script_dir}/{data_folder}/particle_train_{i}.npy", particle_type)
         np.save(
             f"{script_dir}/{data_folder}/features_train_{i}.npy", sigma[np.newaxis, ...]
@@ -118,7 +118,7 @@ if __name__ == "__main__":
         )
         sim.solve_dynamics(method="RK45")
         _times, loc = sim.get_solution_abs()
-        np.save(f"{script_dir}/{data_folder}/simulation_test_{i}.npy", loc[10:])
+        np.save(f"{script_dir}/{data_folder}/simulation_test_{i}.npy", loc)
         np.save(f"{script_dir}/{data_folder}/particle_test_{i}.npy", particle_type)
         np.save(
             f"{script_dir}/{data_folder}/features_test_{i}.npy", sigma[np.newaxis, ...]
@@ -146,7 +146,7 @@ if __name__ == "__main__":
         )
         sim.solve_dynamics(method="RK45")
         _times, loc = sim.get_solution_abs()
-        np.save(f"{script_dir}/{data_folder}/simulation_long_test_{i}.npy", loc[10:])
+        np.save(f"{script_dir}/{data_folder}/simulation_long_test_{i}.npy", loc)
         np.save(f"{script_dir}/{data_folder}/particle_long_test_{i}.npy", particle_type)
         np.save(
             f"{script_dir}/{data_folder}/features_long_test_{i}.npy",
