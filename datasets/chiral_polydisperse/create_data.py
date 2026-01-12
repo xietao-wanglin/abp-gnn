@@ -82,10 +82,9 @@ if __name__ == "__main__":
             v0=3 * sigma,
             rot_couple=rot_couple,
             rot_rate=rot_rate,
-            timesteps=100,
+            timesteps=81,
             sigma=sigma,
             particle_type=particle_type,
-            seed=i,
             initial_state=initial_state,
         )
         sim.solve_dynamics(method="RK45")
@@ -110,10 +109,9 @@ if __name__ == "__main__":
             v0=3 * sigma,
             rot_couple=rot_couple,
             rot_rate=rot_rate,
-            timesteps=100,
+            timesteps=81,
             sigma=sigma,
             particle_type=particle_type,
-            seed=98743 * i + 4500,
             initial_state=initial_state,
         )
         sim.solve_dynamics(method="RK45")
@@ -141,7 +139,6 @@ if __name__ == "__main__":
             sigma=sigma,
             particle_type=particle_type,
             timesteps=400,
-            seed=983 * i + 2000,
             initial_state=initial_state,
         )
         sim.solve_dynamics(method="RK45")
