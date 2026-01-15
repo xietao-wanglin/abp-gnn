@@ -150,19 +150,19 @@ if __name__ == "__main__":
     parser.add_argument("index", help="index")
     args = parser.parse_args()
 
-    start_phi = 7
-    end_phi = 11
+    start_phi = 1
+    end_phi = 21
     n_phi = 81
 
     phis = [start_phi + i * (end_phi - start_phi) / (n_phi - 1) for i in range(n_phi)]
     index = int(args.index)
     phi = phis[index]
 
-    experiment = "chiral_boundary"
+    experiment = "chiral_polydisperse"
     cfg = OmegaConf.load(f"./experiments/{experiment}/cfg.yaml")
     device = "cpu"
     dtype = torch.float
-    model_step = 120_000
+    model_step = 200_000
     timesteps = 16000
     record_every = 10
     start_record = 0
@@ -286,7 +286,7 @@ if __name__ == "__main__":
     sigma = 0.04
     v0 = 3 * sigma
     D_adj = D / (sigma * v0)
-    save_path = "lattice_ml/data_fine.csv"
+    save_path = "lattice_ml/data.csv"
     with open(save_path, "a", newline="") as f:
         writer = csv.writer(f)
         writer.writerow([phi, D_adj])
