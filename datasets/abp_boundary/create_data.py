@@ -11,7 +11,7 @@ import json
 
 
 def generate_state(n, delta=0.02):
-    n_boundary = np.random.randint(1, n // 4)
+    n_boundary = np.random.randint(1, n // 2)
     rot_rate = np.zeros(n)
     rot_couple = np.zeros(n)
     sigma = 0.04
@@ -107,7 +107,7 @@ if __name__ == "__main__":
         )
         sim.solve_dynamics(method="RK45")
         _times, loc = sim.get_solution_abs()
-        np.save(f"{script_dir}/{data_folder}/simulation_train_{i}.npy", loc[10:])
+        np.save(f"{script_dir}/{data_folder}/simulation_train_{i}.npy", loc)
         np.save(f"{script_dir}/{data_folder}/particle_train_{i}.npy", particle_type)
 
     for i in tqdm(range(test_init, test_sims + test_init), desc="Test Set"):
@@ -135,7 +135,7 @@ if __name__ == "__main__":
         )
         sim.solve_dynamics(method="RK45")
         _times, loc = sim.get_solution_abs()
-        np.save(f"{script_dir}/{data_folder}/simulation_test_{i}.npy", loc[10:])
+        np.save(f"{script_dir}/{data_folder}/simulation_test_{i}.npy", loc)
         np.save(f"{script_dir}/{data_folder}/particle_test_{i}.npy", particle_type)
 
     for i in tqdm(range(long_test_sims), desc="Long Test Set"):
@@ -163,7 +163,7 @@ if __name__ == "__main__":
         )
         sim.solve_dynamics(method="RK45")
         _times, loc = sim.get_solution_abs()
-        np.save(f"{script_dir}/{data_folder}/simulation_long_test_{i}.npy", loc[10:])
+        np.save(f"{script_dir}/{data_folder}/simulation_long_test_{i}.npy", loc)
         np.save(f"{script_dir}/{data_folder}/particle_long_test_{i}.npy", particle_type)
 
     vel_mean, vel_std = compute_stats(script_dir)
