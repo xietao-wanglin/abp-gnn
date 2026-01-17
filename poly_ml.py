@@ -99,7 +99,15 @@ def create_model(cfg):
     return model
 
 
-def generate_state_with_grid_boundary(phi, n_boundary=400, sigma=0.04):
+def generate_state_with_grid_boundary(
+        phi, 
+        n_boundary=400, 
+        sigma=0.04,
+        sigma_s=0.01,
+        size_min=0.01, 
+        size_max=0.07,
+        dtype=torch.float):
+    
     box_length = np.sqrt(100 * 100 * torch.pi * (0.04) ** 2 / phi)
     n_side = int(np.sqrt(n_boundary))
     lc = box_length / 20
@@ -108,12 +116,18 @@ def generate_state_with_grid_boundary(phi, n_boundary=400, sigma=0.04):
     y = np.linspace(0, box_length - lc, n_side) + lc / 2
     X, Y = np.meshgrid(x, y)
     X, Y = X.flatten()[:n_boundary], Y.flatten()[:n_boundary]
+    sigmas = np.zeros(n_boundary)
+    for i in range(n_boundary):
+        r = -1
+        while not (size_min <= r <= size_max):
+            r = np.random.normal(sigma, sigma_s)
+        sigmas[i] = r
 
     while True:
         active_x = np.random.rand() * box_length
         active_y = np.random.rand() * box_length
         d = np.sqrt((X - active_x) ** 2 + (Y - active_y) ** 2)
-        if np.all(d > 1 * sigma):
+        if np.all(d > sigmas + sigma):
             break
     active_theta = np.random.rand() * 2 * np.pi
 
@@ -128,8 +142,9 @@ def generate_state_with_grid_boundary(phi, n_boundary=400, sigma=0.04):
     initial_state = np.vstack([all_x, all_y, all_theta])
     return (
         torch.tensor(particle_type, dtype=torch.int),
-        torch.tensor(initial_state, dtype=torch.float),
+        torch.tensor(initial_state, dtype=dtype),
         box_length,
+        torch.tensor(sigmas[np.newaxis, ...], dtype=dtype)
     )
 
 
@@ -182,8 +197,8 @@ if __name__ == "__main__":
     model.eval()
     msd_mean = None
     for replic in range(n_replications):
-        particles, initial_state, box_length = generate_state_with_grid_boundary(
-            phi=phi
+        particles, initial_state, box_length, particle_features = generate_state_with_grid_boundary(
+            phi=phi, dtype=dtype,
         )
         init = initial_state
 
@@ -211,6 +226,8 @@ if __name__ == "__main__":
                 device=device,
             )
             features = []
+            if particle_features is not None:
+                features.append(particle_features.T)
             if cfg.data.features.use_pos:
                 features.append(x_bounded[:2].T)
             if cfg.data.features.use_angle:
@@ -274,7 +291,7 @@ if __name__ == "__main__":
         if msd_mean is None:
             msd_mean = msd
         else:
-            msd_mean = msd_mean + (msd - msd_mean) / (i + 1)
+            msd_mean = msd_mean + (msd - msd_mean) / (replic + 1)
 
     dt = 1
     time = np.arange(len(msd_mean)) * dt
@@ -286,7 +303,7 @@ if __name__ == "__main__":
     sigma = 0.04
     v0 = 3 * sigma
     D_adj = D / (sigma * v0)
-    save_path = "lattice_ml/data.csv"
+    save_path = "poly_ml/data.csv"
     with open(save_path, "a", newline="") as f:
         writer = csv.writer(f)
         writer.writerow([phi, D_adj])

@@ -274,7 +274,7 @@ if __name__ == "__main__":
         if msd_mean is None:
             msd_mean = msd
         else:
-            msd_mean = msd_mean + (msd - msd_mean) / (i + 1)
+            msd_mean = msd_mean + (msd - msd_mean) / (replic + 1)
 
     dt = 1
     time = np.arange(len(msd_mean)) * dt
