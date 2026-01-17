@@ -116,7 +116,8 @@ def generate_state_with_grid_boundary(
     y = np.linspace(0, box_length - lc, n_side) + lc / 2
     X, Y = np.meshgrid(x, y)
     X, Y = X.flatten()[:n_boundary], Y.flatten()[:n_boundary]
-    sigmas = np.zeros(n_boundary)
+    sigmas = np.zeros(n_boundary + 1)
+    sigmas[-1] = sigma
     for i in range(n_boundary):
         r = -1
         while not (size_min <= r <= size_max):
@@ -127,7 +128,7 @@ def generate_state_with_grid_boundary(
         active_x = np.random.rand() * box_length
         active_y = np.random.rand() * box_length
         d = np.sqrt((X - active_x) ** 2 + (Y - active_y) ** 2)
-        if np.all(d > sigmas + sigma):
+        if np.all(d > sigmas[:-1] + sigma):
             break
     active_theta = np.random.rand() * 2 * np.pi
 
