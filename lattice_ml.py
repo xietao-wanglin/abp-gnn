@@ -150,8 +150,8 @@ if __name__ == "__main__":
     parser.add_argument("index", help="index")
     args = parser.parse_args()
 
-    start_phi = 7
-    end_phi = 11
+    start_phi = 1
+    end_phi = 21
     n_phi = 81
 
     phis = [start_phi + i * (end_phi - start_phi) / (n_phi - 1) for i in range(n_phi)]
