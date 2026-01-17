@@ -286,7 +286,7 @@ if __name__ == "__main__":
     sigma = 0.04
     v0 = 3 * sigma
     D_adj = D / (sigma * v0)
-    save_path = "lattice_ml/data_fine.csv"
+    save_path = "lattice_ml/data.csv"
     with open(save_path, "a", newline="") as f:
         writer = csv.writer(f)
         writer.writerow([phi, D_adj])
