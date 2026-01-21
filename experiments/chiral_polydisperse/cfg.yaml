@@ -9,11 +9,11 @@ wandb:
 
 model:
   name: "GNS"
-  n_layers: 4
+  n_layers: 5
   in_node_nf: 2
   out_node_nf: 2
   in_edge_nf: 3
-  hidden_nf: 64
+  hidden_nf: 128
   encoder_depth: 2
   decoder_depth: 2
   edge_mlp_depth: 2
@@ -26,12 +26,12 @@ model:
   aggr: "sum"
 
 train:
-  lr: 1e-3
+  lr: 1e-4
   lr_final: 1e-6
   lr_decay_steps: 5e6
   weight_decay: 1e-8
   batch_size: 32
-  n_steps: 200000
+  n_steps: 1000000
   checkpoint_every: 250
   log_steps: 1
   base_model_path: null
@@ -49,7 +49,7 @@ data:
   subset_samples: [0, 20, 40, 60]
   cluster:
     method: "radius"
-    parameter: 0.1
+    parameter: 0.15
   features:
     use_distance: true
     use_rel_pos: true
