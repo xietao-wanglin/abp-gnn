@@ -162,7 +162,7 @@ if __name__ == "__main__":
     cfg = OmegaConf.load(f"./experiments/{experiment}/cfg.yaml")
     device = "cpu"
     dtype = torch.float
-    model_step = 120_000
+    model_step = 1_000_000
     timesteps = 16000
     record_every = 10
     start_record = 0
