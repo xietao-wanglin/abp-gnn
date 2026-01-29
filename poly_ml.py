@@ -199,7 +199,7 @@ if __name__ == "__main__":
     msd_mean = None
     for replic in range(n_replications):
         particles, initial_state, box_length, particle_features = generate_state_with_grid_boundary(
-            phi=phi, dtype=dtype,
+            phi=phi, dtype=dtype, sigma_s=0.004
         )
         init = initial_state
 
