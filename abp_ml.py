@@ -113,12 +113,12 @@ def create_model(cfg):
 
 
 if __name__ == "__main__":
-    n = 2048
+    n = 128
     n_replications = 20
 
     experiment = "abp_boundary_cluster"
     cfg = OmegaConf.load(f"./experiments/{experiment}/cfg.yaml")
-    model_step = 1_000_000
+    model_step = 488_000
     timesteps = 5010
     record_every = 10
     start_record = 0
@@ -217,7 +217,7 @@ if __name__ == "__main__":
                 save_idx += 1
             current_state = next_state
         np.savez(
-            f"./vicsek/data/ml_{n}_{replic}.npz",
+            f"./abp/data/ml_{n}_{replic}.npz",
             predictions=predictions.numpy(),
             box_length=box_length,
             initial_state=init.numpy(),

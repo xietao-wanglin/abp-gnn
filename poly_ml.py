@@ -103,7 +103,7 @@ def generate_state_with_grid_boundary(
         phi, 
         n_boundary=400, 
         sigma=0.04,
-        sigma_s=0.01,
+        sigma_s=0.004,
         size_min=0.01, 
         size_max=0.07,
         dtype=torch.float):
@@ -128,7 +128,7 @@ def generate_state_with_grid_boundary(
         active_x = np.random.rand() * box_length
         active_y = np.random.rand() * box_length
         d = np.sqrt((X - active_x) ** 2 + (Y - active_y) ** 2)
-        if np.all(d > sigmas[:-1] + sigma):
+        if np.all(d > (sigmas[:-1] + sigma)/2):
             break
     active_theta = np.random.rand() * 2 * np.pi
 
