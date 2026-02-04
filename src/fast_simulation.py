@@ -7,8 +7,7 @@ import equinox as eqx
 class ParticleType:
     BOUNDARY = 0
     ACTIVE = 1
-    PASSIVE = 2
-    SIZE = 3
+    SIZE = 2
 
 
 class FastSimulation(eqx.Module):
@@ -27,12 +26,15 @@ class FastSimulation(eqx.Module):
     def solve_dynamics(
         self,
         t_end,
+        wrap=None,
         dt=None,
         save_dt=None,
         min_save_t=None,
         use_controller=None,
         debug=None,
     ):
+        if wrap is None:
+            wrap = True
         if dt is None:
             dt = 1e-4
         if save_dt is None:
@@ -70,8 +72,9 @@ class FastSimulation(eqx.Module):
         pos = y_hist[:, :2, :]
         theta = y_hist[:, 2, :]
 
-        pos = pos % self.box_length
-        theta = theta % (2 * jnp.pi)
+        if wrap:
+            pos = pos % self.box_length
+            theta = theta % (2 * jnp.pi)
 
         y_final = jnp.concatenate([pos, theta[:, None, :]], axis=1)
 
@@ -187,5 +190,79 @@ class WCA(FastSimulation):
         dxdt = (self.v0 * jnp.cos(theta) + fx_total) * boundary_mask
         dydt = (self.v0 * jnp.sin(theta) + fy_total) * boundary_mask
         dthetadt = (self.rot_rate + self.couple_strength * alignment) * boundary_mask
+
+        return jnp.stack([dxdt, dydt, dthetadt])
+    
+class BoundaryWCA(FastSimulation):
+    v0: float
+    rot_rate: float
+    epsilon: float
+    sigma: float
+    couple_radius: float
+    couple_strength: float
+    particle_type: jax.Array
+
+    r_cutoff_sq: float
+    couple_radius_sq: float
+    force_prefactor: float
+    sigma_sq: float
+
+    def __init__(
+        self,
+        initial_state,
+        v0,
+        rot_rate,
+        epsilon,
+        sigma,
+        couple_radius,
+        couple_strength,
+        particle_type,
+        box_length=1.0,
+    ):
+        super().__init__(initial_state, box_length)
+        self.v0 = v0
+        self.rot_rate = rot_rate
+        self.epsilon = epsilon
+        self.sigma = sigma
+        self.couple_radius = couple_radius
+        self.couple_strength = couple_strength
+        self.particle_type = particle_type
+
+        self.r_cutoff_sq = ((2 ** (1 / 6)) * sigma) ** 2
+        self.couple_radius_sq = couple_radius**2
+        self.force_prefactor = 24 * epsilon
+        self.sigma_sq = sigma**2
+
+    def particle_system(self, t, y, args):
+        pos = y[:2].T
+        theta = y[2]
+
+        diff = pos[:, None, :] - pos[None, :, :]
+        diff = diff - self.box_length * jnp.rint(diff / self.box_length)
+        dist_sq = jnp.sum(diff**2, axis=-1)
+
+        is_boundary = (self.particle_type == ParticleType.BOUNDARY)
+        type_mask = is_boundary[:, None] | is_boundary[None, :]
+        wca_mask = (dist_sq < self.r_cutoff_sq) & (dist_sq > 0.0) & type_mask
+        
+        safe_dist_sq = jnp.where(wca_mask, dist_sq, 1.0)
+        inv_r2 = 1.0 / safe_dist_sq
+        sigma_r6 = (self.sigma_sq * inv_r2) ** 3
+        f_term = (
+            self.force_prefactor * (2 * sigma_r6**2 - sigma_r6) * inv_r2
+        ) * wca_mask
+
+        fx_total = jnp.sum(f_term * diff[..., 0], axis=1)
+        fy_total = jnp.sum(f_term * diff[..., 1], axis=1)
+
+        angle_diff = jnp.sin(theta[None, :] - theta[:, None])
+        align_mask = (dist_sq < self.couple_radius_sq) & (dist_sq > 0.0) & type_mask
+        alignment = jnp.sum(angle_diff * align_mask, axis=1)
+
+        movement_mask = self.particle_type > ParticleType.BOUNDARY
+        
+        dxdt = (self.v0 * jnp.cos(theta) + fx_total) * movement_mask
+        dydt = (self.v0 * jnp.sin(theta) + fy_total) * movement_mask
+        dthetadt = (self.rot_rate + self.couple_strength * alignment) * movement_mask
 
         return jnp.stack([dxdt, dydt, dthetadt])

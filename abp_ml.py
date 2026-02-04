@@ -113,7 +113,7 @@ def create_model(cfg):
 
 
 if __name__ == "__main__":
-    n = 128
+    n = 2048
     n_replications = 20
 
     experiment = "abp_boundary_cluster"
