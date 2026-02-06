@@ -7,7 +7,7 @@ import argparse
 
 import equinox as eqx
 
-jax.config.update("jax_enable_x64", False)
+jax.config.update("jax_enable_x64", True)
 
 
 @eqx.filter_jit
