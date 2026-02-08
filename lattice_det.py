@@ -92,7 +92,7 @@ if __name__ == "__main__":
     out = run_sim(sim, wrap=False, t_end=t_end, save_dt=save_dt)
     res = np.array(out)
     np.savez(
-        f"lattice/data/sim_{index}.npz",
+        f"lattice/data_det/sim_{index}.npz",
         predictions=res,
         box_length=box_length,
         initial_state=np.array(initial_state),

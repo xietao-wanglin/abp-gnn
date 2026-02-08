@@ -4,8 +4,10 @@ import numpy as np
 
 
 
-def generate_state_chevron(n, n_boundary=50, box_length=1.0, chevron_angle=np.pi / 4, arm_length=0.4):
+def generate_state_chevron(n, n_boundary=50, box_length=1.0, chevron_angle=90, arm_length=0.4):
     n_free = n
+
+    half_angle_rad = np.deg2rad(chevron_angle / 2)
 
     x_free = np.random.random(n_free) * box_length
     y_free = np.random.random(n_free) * box_length
@@ -15,11 +17,11 @@ def generate_state_chevron(n, n_boundary=50, box_length=1.0, chevron_angle=np.pi
     arm_points = n_boundary // 2
 
     s = np.linspace(0, arm_length * box_length, arm_points)
-    x_left = center[0] - s * np.cos(chevron_angle)
-    y_left = center[1] - s * np.sin(chevron_angle)
+    x_left = center[0] - s * np.cos(half_angle_rad)
+    y_left = center[1] - s * np.sin(half_angle_rad)
 
-    x_right = center[0] + s * np.cos(chevron_angle)
-    y_right = center[1] - s * np.sin(chevron_angle)
+    x_right = center[0] + s * np.cos(half_angle_rad)
+    y_right = center[1] - s * np.sin(half_angle_rad)
 
     x_bound = np.concatenate([x_left, x_right])
     y_bound = np.concatenate([y_left, y_right])
@@ -36,26 +38,24 @@ def generate_state_chevron(n, n_boundary=50, box_length=1.0, chevron_angle=np.pi
     return initial_state, particle_type
 
 if __name__ == "__main__":
-    np.random.seed(0)
-    n = 200
+    n = 1
     sigma = 0.02
-    rho = 0.28
-    box_length = 2*sigma * np.sqrt(n * np.pi / rho) / 2
-    initial_state, particle_type = generate_state_chevron(n=n, box_length=box_length)
+    box_length = 1.0
+    initial_state, particle_type = generate_state_chevron(n=n, n_boundary=20, box_length=box_length)
     sim = WCA(
         initial_state=initial_state,
         v0=0.1,
-        diffusion_r=0.0,
+        diffusion_r=0.001,
         diffusion_t=0.0,
         rot_rate=0.0,
         sigma=sigma,
         epsilon=0.01,
-        timesteps=500,
+        timesteps=5000,
         couple_radius=0.0,
         rot_couple=0.0,
         delta_t=0.1,
         box_length=box_length,
-        record_every=1,
+        record_every=10,
         start_record=0,
         particle_type=particle_type
     )
