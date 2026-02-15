@@ -83,7 +83,7 @@ if __name__ == "__main__":
     )
     res = np.array(out.block_until_ready())
     np.savez(
-        "sim_out",
+        f"chevron/det_{index}",
         predictions=res,
         box_length=box_length,
         initial_state=np.array(initial_state),
