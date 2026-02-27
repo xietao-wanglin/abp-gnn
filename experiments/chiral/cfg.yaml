@@ -1,6 +1,6 @@
 seed: 1
 
-dataset: "chiral_boundary"
+dataset: "chiral"
 
 wandb:
   name: "chiral"
@@ -46,7 +46,7 @@ test:
 
 data:
   subset: true
-  subset_samples: [20]
+  subset_samples: [0]
   cluster:
     method: "radius"
     parameter: 0.1
