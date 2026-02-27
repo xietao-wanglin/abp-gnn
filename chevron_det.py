@@ -45,10 +45,10 @@ def generate_state_chevron(n, box_length, n_boundary=30, chevron_angle=60, arm_l
 
 
 if __name__ == "__main__":
-    np.random.seed(1)
 
     parser = argparse.ArgumentParser()
     parser.add_argument("index", help="index")
+    parser.add_argument("--rep", type=int, default=0, help="rep")
     args = parser.parse_args()
 
     start_phi = 0
@@ -63,33 +63,32 @@ if __name__ == "__main__":
     save_dt = 1
     sigma = 0.04
     box_length = 1
-    reps = 19
-
-    for rep in range(reps):
-        initial_state, particle_type= generate_state_chevron(
-            n=n, chevron_angle=phi, n_boundary=50, box_length=box_length, arm_length=0.3,
-        )
-        sim = TorqueWCA(
-            initial_state=initial_state,
-            v0=0.1,
-            rot_rate=0.0,
-            epsilon=0.1,
-            sigma=sigma,
-            couple_radius=0.0,
-            couple_strength=0.0,
-            gamma=1,
-            particle_type=particle_type,
-            box_length=box_length,
-        )
-        out = sim.solve_dynamics(
-            t_end=1000, dt=1e-12, save_dt=save_dt, debug=True, use_controller=True
-        )
-        res = np.array(out.block_until_ready())
-        np.savez(
-            f"chevron/det_{index}_{rep}",
-            predictions=res,
-            box_length=box_length,
-            initial_state=np.array(initial_state),
-            angle=phi,
-            dt=save_dt,
-        )
+    rep = 0
+    np.random.seed(rep+8000)
+    initial_state, particle_type = generate_state_chevron(
+        n=n, chevron_angle=phi, n_boundary=50, box_length=box_length, arm_length=0.3,
+    )
+    sim = TorqueWCA(
+        initial_state=initial_state,
+        v0=0.1,
+        rot_rate=0.0,
+        epsilon=0.1,
+        sigma=sigma,
+        couple_radius=0.0,
+        couple_strength=0.0,
+        gamma=1,
+        particle_type=particle_type,
+        box_length=box_length,
+    )
+    out = sim.solve_dynamics(
+        t_end=1000, dt=1e-12, save_dt=save_dt, debug=False, use_controller=True
+    )
+    res = np.array(out.block_until_ready())
+    np.savez(
+        f"chevron/det_{index}_{rep}",
+        predictions=res,
+        box_length=box_length,
+        initial_state=np.array(initial_state),
+        angle=phi,
+        dt=save_dt,
+    )
