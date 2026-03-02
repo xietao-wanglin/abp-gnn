@@ -11,7 +11,7 @@ import json
 
 
 def generate_state(n, delta=0.0):
-    n_boundary = np.random.randint(1, n // 2)
+    n_boundary = 2
     rot_rate = np.zeros(n)
     rot_couple = np.zeros(n)
     sigma = 0.04
@@ -83,7 +83,7 @@ if __name__ == "__main__":
     train_init = 0
     test_sims = 800
     test_init = 0
-    long_test_sims = 4
+    long_test_sims = 1
     data_folder = "data"
 
     script_dir = os.path.dirname(os.path.abspath(__file__))
