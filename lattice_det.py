@@ -59,7 +59,7 @@ def generate_state_with_grid_boundary(phi, n_active=10, n_boundary=400, sigma=0.
 if __name__ == "__main__":
 
     n = 200
-    save_dt = 2
+    save_dt = 1
     t_end = 1600
 
     sigma = 0.04
