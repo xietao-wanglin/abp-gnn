@@ -46,7 +46,7 @@ test:
 
 data:
   subset: true
-  subset_samples: [0, 19]
+  subset_samples: [0]
   cluster:
     method: "radius"
     parameter: 0.1
