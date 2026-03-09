@@ -50,7 +50,7 @@ class FastSimulation(eqx.Module):
             else dfx.ConstantStepSize()
         )
         times = jnp.arange(min_save_t, t_end, save_dt)
-        solver = dfx.Dopri5()
+        solver = dfx.Heun()
 
         y0 = self.initial_state
         saveat = dfx.SaveAt(ts=times)

@@ -7,13 +7,13 @@ import argparse
 
 import equinox as eqx
 
-jax.config.update("jax_enable_x64", True)
+jax.config.update("jax_enable_x64", False)
 
 
 @eqx.filter_jit
 def run_sim(model, wrap, t_end, save_dt):
     return model.solve_dynamics(
-        t_end=t_end, wrap=wrap, dt=1e-12, save_dt=save_dt, debug=True, use_controller=True
+        t_end=t_end, wrap=wrap, dt=1e-4, save_dt=save_dt, debug=True, use_controller=True
     )
 
 def generate_state_with_grid_boundary(phi, n_active=10, n_boundary=400, sigma=0.04):
@@ -82,7 +82,7 @@ if __name__ == "__main__":
         initial_state=initial_state,
         v0=v0,
         rot_rate=1.0,
-        epsilon=0.1,
+        epsilon=1,
         sigma=sigma,
         couple_radius=0.0,
         couple_strength=0.0,

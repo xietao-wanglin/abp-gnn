@@ -1,9 +1,9 @@
 seed: 1
 
-dataset: "torque_cluster"
+dataset: "torque"
 
 wandb:
-  name: "torque_cluster"
+  name: "torque"
   track_gradients: false
   gradients_every: 125
 
@@ -32,17 +32,17 @@ train:
   weight_decay: 1e-8
   batch_size: 32
   n_steps: 1000000
-  checkpoint_every: 20000
+  checkpoint_every: 2000
   log_steps: 1
   base_model_path: null
 
 val:
   batch_size: 200
-  log_steps: 20000
+  log_steps: 2000
 
 test:
   active: true
-  log_steps: 20000
+  log_steps: 2000
 
 data:
   subset: true
