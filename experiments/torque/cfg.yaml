@@ -1,9 +1,9 @@
 seed: 1
 
-dataset: "torque_cluster"
+dataset: "torque"
 
 wandb:
-  name: "torque_cluster"
+  name: "torque"
   track_gradients: false
   gradients_every: 125
 
