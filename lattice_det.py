@@ -13,7 +13,7 @@ jax.config.update("jax_enable_x64", False)
 @eqx.filter_jit
 def run_sim(model, wrap, t_end, save_dt):
     return model.solve_dynamics(
-        t_end=t_end, wrap=wrap, dt=1e-4, save_dt=save_dt, debug=True, use_controller=True
+        t_end=t_end, wrap=wrap, dt=1e-4, save_dt=save_dt, debug=True, use_controller=False
     )
 
 def generate_state_with_grid_boundary(phi, n_active=10, n_boundary=400, sigma=0.04):
@@ -59,8 +59,8 @@ def generate_state_with_grid_boundary(phi, n_active=10, n_boundary=400, sigma=0.
 if __name__ == "__main__":
 
     n = 200
-    save_dt = 1
-    t_end = 1600
+    save_dt = 0.1
+    t_end = 10
 
     sigma = 0.04
     v0 = 3 * sigma
@@ -92,7 +92,7 @@ if __name__ == "__main__":
     out = run_sim(sim, wrap=False, t_end=t_end, save_dt=save_dt)
     res = np.array(out)
     np.savez(
-        f"lattice/data_det/sim_{index}.npz",
+        "sim.out.npz",
         predictions=res,
         box_length=box_length,
         initial_state=np.array(initial_state),
