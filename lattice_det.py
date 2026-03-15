@@ -7,7 +7,7 @@ import argparse
 
 import equinox as eqx
 
-jax.config.update("jax_enable_x64", False)
+jax.config.update("jax_enable_x64", True)
 
 
 @eqx.filter_jit
@@ -59,10 +59,10 @@ def generate_state_with_grid_boundary(phi, n_active=10, n_boundary=400, sigma=0.
 if __name__ == "__main__":
 
     n = 200
-    save_dt = 0.1
-    t_end = 10
+    save_dt = 1
+    t_end = 1600
 
-    sigma = 0.04
+    sigma = 1
     v0 = 3 * sigma
     parser = argparse.ArgumentParser()
     parser.add_argument("index", help="index")
