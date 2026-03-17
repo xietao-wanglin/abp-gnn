@@ -53,7 +53,7 @@ def compute_stats(script_dir):
     all_list = []
     all_list_theta = []
     for idx, data in enumerate(sim_glob):
-        data_arr = np.load(data)
+        data_arr = np.load(data)[:20]
         particle_arr = np.load(particle_glob[idx])
         bcs = apply_periodic_boundary(
             torch.tensor(data_arr[::2]), dims=[box_length, box_length, 2 * torch.pi]
@@ -79,11 +79,11 @@ def compute_stats(script_dir):
 
 
 if __name__ == "__main__":
-    train_sims = 4000
+    train_sims = 0
     train_init = 0
-    test_sims = 800
+    test_sims = 0
     test_init = 0
-    long_test_sims = 1
+    long_test_sims = 0
     data_folder = "data"
 
     script_dir = os.path.dirname(os.path.abspath(__file__))
@@ -108,7 +108,7 @@ if __name__ == "__main__":
         sim = WCA(
             rot_couple=rot_couple,
             rot_rate=rot_rate,
-            timesteps=21,
+            timesteps=2,
             sigma=sigma,
             epsilon=epsilon,
             gamma=gamma,

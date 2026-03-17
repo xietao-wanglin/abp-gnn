@@ -39,7 +39,7 @@ def compute_stats(script_dir):
     particle_glob = sorted(glob(f"{script_dir}/data/particle_train_*"))
     all_list = []
     for idx, data in enumerate(sim_glob):
-        data_arr = np.load(data)
+        data_arr = np.load(data)[:20]
         particle_arr = np.load(particle_glob[idx])
         bcs = apply_periodic_boundary(torch.tensor(data_arr[::2])).numpy()
         pos_diff = data_arr[1::2] - bcs
