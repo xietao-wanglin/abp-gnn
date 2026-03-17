@@ -11,7 +11,12 @@ jax.config.update("jax_enable_x64", False)
 @eqx.filter_jit
 def run_sim(model, wrap, t_end, save_dt):
     return model.solve_dynamics(
-        t_end=t_end, wrap=wrap, dt=1e-12, save_dt=save_dt, debug=True, use_controller=True
+        t_end=t_end,
+        wrap=wrap,
+        dt=1e-12,
+        save_dt=save_dt,
+        debug=True,
+        use_controller=True,
     )
 
 
@@ -32,6 +37,7 @@ def generate_state(n, rho=0.28, sigma=0.04, rep=0, random=None):
 
     return particle_type, box_length, initial_state
 
+
 def generate_state_with_grid_boundary(phi, n_active=10, n_boundary=400, sigma=0.04):
     box_length = np.sqrt(100 * 100 * np.pi * (sigma) ** 2 / phi)
     n_side = int(np.sqrt(n_boundary))
@@ -49,9 +55,9 @@ def generate_state_with_grid_boundary(phi, n_active=10, n_boundary=400, sigma=0.
     while len(active_x_list) < n_active:
         candidate_x = np.random.rand() * box_length
         candidate_y = np.random.rand() * box_length
-        
+
         d_to_boundary = np.sqrt((X - candidate_x) ** 2 + (Y - candidate_y) ** 2)
-        
+
         if np.all(d_to_boundary > sigma):
             active_x_list.append(candidate_x)
             active_y_list.append(candidate_y)
@@ -67,7 +73,7 @@ def generate_state_with_grid_boundary(phi, n_active=10, n_boundary=400, sigma=0.
 
     initial_state = jnp.array(np.vstack([all_x, all_y, all_theta]))
     particle_type = jnp.array(particle_type)
-    
+
     return particle_type, box_length, initial_state
 
 
@@ -82,7 +88,7 @@ if __name__ == "__main__":
     )
     sim = BoundaryWCA(
         initial_state=initial_state,
-        v0=3*sigma,
+        v0=3 * sigma,
         rot_rate=1.0,
         epsilon=0.1,
         sigma=sigma,

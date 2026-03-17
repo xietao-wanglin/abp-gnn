@@ -10,7 +10,7 @@ import os
 import json
 
 
-def generate_state(n, box_length=0.4, delta = 0.0):
+def generate_state(n, box_length=0.4, delta=0.0):
     n_boundary = 2
     rot_rate = np.ones(n) * 1
     rot_couple = np.zeros(n)
@@ -18,7 +18,6 @@ def generate_state(n, box_length=0.4, delta = 0.0):
     epsilon = 0.1
 
     while True:
-        
         initial_state = np.random.random(3 * n)
         initial_state[2::3] *= 2 * np.pi
         initial_state[0::3] *= box_length
