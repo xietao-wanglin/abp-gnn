@@ -46,6 +46,7 @@ def generate_state(n, delta=0.0):
         particle_type,
     )
 
+
 def compute_stats(script_dir):
     box_length = 0.4
     sim_glob = sorted(glob(f"{script_dir}/data/simulation_train_*"))
@@ -67,7 +68,7 @@ def compute_stats(script_dir):
         df_theta_filtered = df_theta[:, mask]
         all_list.append(df_filtered.reshape(-1))
         all_list_theta.append(df_theta_filtered.reshape(-1))
-    
+
     all_list = np.hstack(all_list)
     all_list_theta = np.hstack(all_list_theta)
     df_describe = pd.DataFrame(all_list)
@@ -75,7 +76,6 @@ def compute_stats(script_dir):
     mean, std = df_describe.mean()[0], df_describe.std()[0]
     angular_mean, angular_std = df_describe_theta.mean()[0], df_describe_theta.std()[0]
     return mean, std, angular_mean, angular_std
-
 
 
 if __name__ == "__main__":

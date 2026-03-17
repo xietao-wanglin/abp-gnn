@@ -317,12 +317,14 @@ class WCA(BaseSimulation):
 
         Fx_total, Fy_total = self.repulsion(dx, dy, distances)
 
-        steric_torque = (np.cos(theta) * Fy_total - np.sin(theta) * Fx_total)
+        steric_torque = np.cos(theta) * Fy_total - np.sin(theta) * Fx_total
 
         dxdt += Fx_total
         dydt += Fy_total
 
-        dthetadt = self.rot_rate + self.rot_couple * interaction + self.gamma * steric_torque
+        dthetadt = (
+            self.rot_rate + self.rot_couple * interaction + self.gamma * steric_torque
+        )
         dxdt *= boundary_mask
         dydt *= boundary_mask
         dthetadt *= boundary_mask
@@ -523,7 +525,8 @@ class Toy(BaseSimulation):
         dthetadt *= boundary_mask
         derivative = np.vstack([dxdt, dydt, dthetadt])
         return derivative.T.reshape(3 * self.n)
-    
+
+
 class SparseWCA(BaseSimulation):
     def __init__(
         self,

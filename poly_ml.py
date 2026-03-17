@@ -100,14 +100,14 @@ def create_model(cfg):
 
 
 def generate_state_with_grid_boundary(
-        phi, 
-        n_boundary=400, 
-        sigma=0.04,
-        sigma_s=0.004,
-        size_min=0.01, 
-        size_max=0.07,
-        dtype=torch.float):
-    
+    phi,
+    n_boundary=400,
+    sigma=0.04,
+    sigma_s=0.004,
+    size_min=0.01,
+    size_max=0.07,
+    dtype=torch.float,
+):
     box_length = np.sqrt(100 * 100 * torch.pi * (0.04) ** 2 / phi)
     n_side = int(np.sqrt(n_boundary))
     lc = box_length / 20
@@ -128,7 +128,7 @@ def generate_state_with_grid_boundary(
         active_x = np.random.rand() * box_length
         active_y = np.random.rand() * box_length
         d = np.sqrt((X - active_x) ** 2 + (Y - active_y) ** 2)
-        if np.all(d > (sigmas[:-1] + sigma)/2):
+        if np.all(d > (sigmas[:-1] + sigma) / 2):
             break
     active_theta = np.random.rand() * 2 * np.pi
 
@@ -145,7 +145,7 @@ def generate_state_with_grid_boundary(
         torch.tensor(particle_type, dtype=torch.int),
         torch.tensor(initial_state, dtype=dtype),
         box_length,
-        torch.tensor(sigmas[np.newaxis, ...], dtype=dtype)
+        torch.tensor(sigmas[np.newaxis, ...], dtype=dtype),
     )
 
 
@@ -198,8 +198,8 @@ if __name__ == "__main__":
     model.eval()
     msd_mean = None
     for replic in range(n_replications):
-        particles, initial_state, box_length, particle_features = generate_state_with_grid_boundary(
-            phi=phi, dtype=dtype, sigma_s=0.004
+        particles, initial_state, box_length, particle_features = (
+            generate_state_with_grid_boundary(phi=phi, dtype=dtype, sigma_s=0.004)
         )
         init = initial_state
 

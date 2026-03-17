@@ -29,7 +29,6 @@ def load_state():
 
 
 if __name__ == "__main__":
-
     start = -6
     end = -1
     n = 41
@@ -37,7 +36,7 @@ if __name__ == "__main__":
     exps = [start + i * (end - start) / (n - 1) for i in range(n)]
 
     for i, exp in enumerate(exps):
-        sim_dt = (10**(exp))
+        sim_dt = 10 ** (exp)
         save_dt = 1
         t_end = 20
         sigma = 0.04

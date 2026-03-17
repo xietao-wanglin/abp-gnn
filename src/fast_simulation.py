@@ -192,7 +192,8 @@ class WCA(FastSimulation):
         dthetadt = (self.rot_rate + self.couple_strength * alignment) * boundary_mask
 
         return jnp.stack([dxdt, dydt, dthetadt])
-    
+
+
 class BoundaryWCA(FastSimulation):
     v0: float
     rot_rate: float
@@ -241,10 +242,10 @@ class BoundaryWCA(FastSimulation):
         diff = diff - self.box_length * jnp.rint(diff / self.box_length)
         dist_sq = jnp.sum(diff**2, axis=-1)
 
-        is_boundary = (self.particle_type == ParticleType.BOUNDARY)
+        is_boundary = self.particle_type == ParticleType.BOUNDARY
         type_mask = is_boundary[:, None] | is_boundary[None, :]
         wca_mask = (dist_sq < self.r_cutoff_sq) & (dist_sq > 0.0) & type_mask
-        
+
         safe_dist_sq = jnp.where(wca_mask, dist_sq, 1.0)
         inv_r2 = 1.0 / safe_dist_sq
         sigma_r6 = (self.sigma_sq * inv_r2) ** 3
@@ -260,7 +261,7 @@ class BoundaryWCA(FastSimulation):
         alignment = jnp.sum(angle_diff * align_mask, axis=1)
 
         movement_mask = self.particle_type > ParticleType.BOUNDARY
-        
+
         dxdt = (self.v0 * jnp.cos(theta) + fx_total) * movement_mask
         dydt = (self.v0 * jnp.sin(theta) + fy_total) * movement_mask
         dthetadt = (self.rot_rate + self.couple_strength * alignment) * movement_mask
@@ -342,11 +343,13 @@ class OscillationWCA(FastSimulation):
         boundary_mask = self.particle_type > ParticleType.BOUNDARY
         dxdt = (self.v0 * jnp.cos(theta) + fx_total) * boundary_mask
         dydt = (self.v0 * jnp.sin(theta) + fy_total) * boundary_mask
-        
-        dthetadt = (self.rot_rate + oscillation + self.couple_strength * alignment) * boundary_mask
+
+        dthetadt = (
+            self.rot_rate + oscillation + self.couple_strength * alignment
+        ) * boundary_mask
 
         return jnp.stack([dxdt, dydt, dthetadt])
-    
+
 
 class TorqueWCA(FastSimulation):
     v0: float
@@ -410,16 +413,19 @@ class TorqueWCA(FastSimulation):
         fx_total = jnp.sum(f_term * diff[..., 0], axis=1)
         fy_total = jnp.sum(f_term * diff[..., 1], axis=1)
 
-        steric_torque = (jnp.cos(theta) * fy_total - jnp.sin(theta) * fx_total)
+        steric_torque = jnp.cos(theta) * fy_total - jnp.sin(theta) * fx_total
         angle_diff = jnp.sin(theta[None, :] - theta[:, None])
         align_mask = (dist_sq < self.couple_radius_sq) & (dist_sq > 0.0)
         alignment = jnp.sum(angle_diff * align_mask, axis=1)
 
-
         boundary_mask = self.particle_type > ParticleType.BOUNDARY
         dxdt = (self.v0 * jnp.cos(theta) + fx_total) * boundary_mask
         dydt = (self.v0 * jnp.sin(theta) + fy_total) * boundary_mask
-        
-        dthetadt = (self.rot_rate + self.gamma * steric_torque + self.couple_strength * alignment) * boundary_mask
+
+        dthetadt = (
+            self.rot_rate
+            + self.gamma * steric_torque
+            + self.couple_strength * alignment
+        ) * boundary_mask
 
         return jnp.stack([dxdt, dydt, dthetadt])
