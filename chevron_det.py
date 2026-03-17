@@ -66,6 +66,7 @@ if __name__ == "__main__":
     reps = 20
     all_reps_results = []
     for index, phi in enumerate(phis):
+        all_reps_results = []
         for rep in tqdm(range(reps)):
             np.random.seed(rep+8000)
             initial_state, particle_type = generate_state_chevron(
@@ -91,7 +92,7 @@ if __name__ == "__main__":
         
         final_array = np.stack(all_reps_results, axis=0)
         np.savez(
-            f"chevron/init/init_{index}",
+            f"chevron/data/det_{index}",
             predictions=final_array,
             box_length=box_length,
             angle=phi,
