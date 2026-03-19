@@ -45,7 +45,7 @@ class FastSimulation(eqx.Module):
         progress_bar = dfx.TqdmProgressMeter() if debug else dfx.NoProgressMeter()
 
         stepsize_controller = (
-            dfx.PIDController(rtol=1e-6, atol=1e-8)
+            dfx.PIDController(rtol=1e-6, atol=1e-9)
             if use_controller
             else dfx.ConstantStepSize()
         )
