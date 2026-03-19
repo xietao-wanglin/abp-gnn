@@ -4,7 +4,7 @@ import jax.numpy as jnp
 import numpy as np
 import argparse
 
-jax.config.update("jax_enable_x64", False)
+jax.config.update("jax_enable_x64", True)
 
 
 def generate_state_chevron(
@@ -92,7 +92,7 @@ if __name__ == "__main__":
             box_length=box_length,
         )
         out = sim.solve_dynamics(
-            t_end=1000, dt=1e-6, save_dt=save_dt, debug=True, use_controller=True
+            t_end=1000, dt=1e-6, save_dt=save_dt, debug=False, use_controller=True
         )
         res = np.array(out.block_until_ready())
 
