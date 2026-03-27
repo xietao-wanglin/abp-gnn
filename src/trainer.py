@@ -1,11 +1,13 @@
 from src.models.gnn import GNN
 from src.models.gns import GNS, StochasticGNS
+from src.models.egnn import EGNN
 from src.utils import (
     discrete_simulation,
     ParticleDataset,
     apply_periodic_boundary,
     compute_graph,
     ExponentialDecayScheduler,
+    BoundaryType,
 )
 
 
@@ -32,7 +34,12 @@ class Trainer:
         else:
             self.seed = self.cfg.seed
         self.set_seed(self.seed)
-        self.dtype = torch.float
+
+        if self.cfg.dtype == "double":
+            self.dtype = torch.double
+            torch.set_default_dtype(self.dtype)
+        else:
+            self.dtype = torch.float
 
         self.device = (
             torch.accelerator.current_accelerator().type
@@ -137,6 +144,7 @@ class Trainer:
             use_angle=self.cfg.data.features.use_angle,
             use_rel_angle=self.cfg.data.features.use_rel_angle,
             target_vel=self.cfg.data.features.target_vel,
+            separate_coords=self.cfg.data.features.separate_coords,
             stats=self.metadata,
             boundary_type=self.cfg.data.boundary_type,
             box_length=self.cfg.data.box_length,
@@ -157,6 +165,7 @@ class Trainer:
             use_angle=self.cfg.data.features.use_angle,
             use_rel_angle=self.cfg.data.features.use_rel_angle,
             target_vel=self.cfg.data.features.target_vel,
+            separate_coords=self.cfg.data.features.separate_coords,
             stats=self.metadata,
             boundary_type=self.cfg.data.boundary_type,
             box_length=self.cfg.data.box_length,
@@ -191,8 +200,7 @@ class Trainer:
             raise ValueError(f"Unknown activation: {name}")
 
     def create_model(self):
-        model_type = self.cfg.model.name
-        if model_type == "GNN":
+        if self.cfg.model.name == "GNN":
             model = (
                 GNN(
                     n_layers=self.cfg.model.n_layers,
@@ -213,7 +221,7 @@ class Trainer:
                 .to(dtype=self.dtype)
                 .to(device=self.device)
             )
-        elif model_type == "GNS":
+        elif self.cfg.model.name == "GNS":
             model = (
                 GNS(
                     n_layers=self.cfg.model.n_layers,
@@ -236,7 +244,7 @@ class Trainer:
                 .to(dtype=self.dtype)
                 .to(device=self.device)
             )
-        elif model_type == "S-GNS":
+        elif self.cfg.model.name == "S-GNS":
             model = (
                 StochasticGNS(
                     n_layers=self.cfg.model.n_layers,
@@ -259,8 +267,24 @@ class Trainer:
                 .to(dtype=self.dtype)
                 .to(device=self.device)
             )
+        elif self.cfg.model.name == "EGNN":
+            model = (
+                EGNN(
+                    n_layers=self.cfg.model.n_layers,
+                    in_node_nf=self.cfg.model.in_node_nf,
+                    in_edge_nf=self.cfg.model.in_edge_nf,
+                    hidden_nf=self.cfg.model.hidden_nf,
+                    out_node_nf=self.cfg.model.out_node_nf,
+                    device=self.device,
+                    num_particle_types=self.cfg.model.n_particle_types,
+                    particle_type_embedding_size=self.cfg.model.particle_embedding,
+                    activation=self.get_activation(self.cfg.model.activation),
+                )
+                .to(dtype=self.dtype)
+                .to(device=self.device)
+            )
         else:
-            raise ValueError(f"Unknown model type: {model_type}")
+            raise ValueError(f"Unknown model type: {self.cfg.model.name}")
         return model
 
     def load_trained_model(self, path):
@@ -329,6 +353,10 @@ class Trainer:
         ground_truths = []
         particle_types = []
         particle_features = []
+        wrap_dims = []
+        for j, type in enumerate(self.cfg.data.boundary_type):
+            if type == BoundaryType.PERIODIC:
+                wrap_dims.append(j)
         for sim_idx, sim in enumerate(self.val_simulations):
             if self.test_particle_type is not None:
                 p_type = torch.tensor(
@@ -350,7 +378,9 @@ class Trainer:
                 x_init = torch.tensor(sim[t], dtype=self.dtype, device=self.device)
                 box_length = self.cfg.data.box_length
                 x_bounded = apply_periodic_boundary(
-                    x_init, dims=[box_length, box_length, 2 * torch.pi]
+                    x_init,
+                    dims=[box_length, box_length, 2 * torch.pi],
+                    wrap_dims=wrap_dims,
                 )
                 initial_states.append(x_bounded)
 
@@ -358,7 +388,9 @@ class Trainer:
                     sim[t + 1 : t + 21], dtype=self.dtype, device=self.device
                 )
                 gt_trajectory = apply_periodic_boundary(
-                    traj, dims=[box_length, box_length, 2 * torch.pi]
+                    traj,
+                    dims=[box_length, box_length, 2 * torch.pi],
+                    wrap_dims=wrap_dims,
                 )
                 ground_truths.append(gt_trajectory)
                 particle_types.append(p_type)
@@ -374,7 +406,10 @@ class Trainer:
 
     def compute_rollout(self):
         num_trajectories = len(self.initial_states)
-
+        wrap_dims = []
+        for j, type in enumerate(self.cfg.data.boundary_type):
+            if type == BoundaryType.PERIODIC:
+                wrap_dims.append(j)
         predictions = []
         for i in range(num_trajectories):
             N_i = self.initial_states[i].shape[1]
@@ -399,7 +434,7 @@ class Trainer:
                 trajectory_sizes.append(N_i)
                 box_length = self.cfg.data.box_length
                 x_bounded = apply_periodic_boundary(
-                    x, dims=[box_length, box_length, 2 * torch.pi]
+                    x, dims=[box_length, box_length, 2 * torch.pi], wrap_dims=wrap_dims
                 )
 
                 edge_index, edge_attr = compute_graph(
@@ -428,7 +463,22 @@ class Trainer:
                     data_input = torch.ones(
                         batch_size, 1, device=self.device, dtype=self.dtype
                     )
-                data = Data(x=data_input, edge_index=edge_index, edge_attr=edge_attr)
+
+                if self.cfg.data.features.separate_coords:
+                    data = Data(
+                        x=x_bounded[:2].T,
+                        theta=x_bounded[2].unsqueeze(0).T,
+                        h=self.particle_features[traj_idx].T
+                        if self.particle_features[traj_idx] is not None
+                        else None,
+                        edge_index=edge_index,
+                        edge_attr=edge_attr,
+                        box_length=box_length,
+                    )
+                else:
+                    data = Data(
+                        x=data_input, edge_index=edge_index, edge_attr=edge_attr
+                    )
                 batch_data_list.append(data)
 
                 if self.particle_types[traj_idx] is not None:
@@ -492,13 +542,16 @@ class Trainer:
                 else:
                     full_vel_pred = traj_pred
                 if batched_particle_type is not None:
-                    full_vel_pred = full_vel_pred * traj_particles.unsqueeze(0).T
+                    if self.cfg.data.features.target_vel:
+                        full_vel_pred = full_vel_pred * traj_particles.unsqueeze(0).T
                 next_state = current_state + full_vel_pred.T
                 if not self.cfg.data.features.target_vel:
                     next_state = full_vel_pred.T
                 box_length = self.cfg.data.box_length
                 predictions[traj_idx][t + 1] = apply_periodic_boundary(
-                    next_state, dims=[box_length, box_length, 2 * torch.pi]
+                    next_state,
+                    dims=[box_length, box_length, 2 * torch.pi],
+                    wrap_dims=wrap_dims,
                 )
 
                 start_idx = end_idx

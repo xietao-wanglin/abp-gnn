@@ -130,7 +130,7 @@ class GNN(nn.Module):
 
         self.to(device)
 
-    def forward(self, data):
+    def forward(self, data, particle_types=None):
         x, edge_index, edge_attr, batch = (
             data.x,
             data.edge_index,

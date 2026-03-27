@@ -67,6 +67,7 @@ def discrete_simulation(
     use_pos=False,
     use_angle=True,
     use_rel_angle=False,
+    separate_coords=False,
     boundary_type=None,
     box_length=1,
     stats=None,
@@ -162,26 +163,42 @@ def discrete_simulation(
 
             features = []
 
-            if features_list is not None:
-                features.append(particle_features.T)
-
             if use_pos:
                 features.append(x_bounded[:2].T)
             if use_angle:
                 features.append(x_bounded[2].unsqueeze(0).T)
+            if features_list is not None:
+                features.append(particle_features.T)
             if features:
                 data_input = torch.cat(features, dim=1)
             else:
                 batch_size = x_bounded.shape[1]
                 data_input = torch.ones(batch_size, 1, device=device, dtype=dtype)
 
-            data = Data(
-                x=data_input,
-                y=label,
-                edge_index=edge_index,
-                edge_attr=edge_attr,
-                particle_type=particle_type,
-            )
+            if not (boundary_type[0] == BoundaryType.PERIODIC):
+                bl = None
+            else:
+                bl = box_length
+
+            if separate_coords:
+                data = Data(
+                    x=x_bounded[:2].T,
+                    theta=x_bounded[2].unsqueeze(0).T,
+                    h=particle_features.T if features_list is not None else None,
+                    y=label,
+                    edge_index=edge_index,
+                    edge_attr=edge_attr,
+                    particle_type=particle_type,
+                    box_length=bl,
+                )
+            else:
+                data = Data(
+                    x=data_input,
+                    y=label,
+                    edge_index=edge_index,
+                    edge_attr=edge_attr,
+                    particle_type=particle_type,
+                )
 
             data_pairs.append(data)
 

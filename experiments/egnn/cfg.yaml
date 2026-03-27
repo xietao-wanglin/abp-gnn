@@ -1,32 +1,32 @@
 seed: 1
 
-dataset: "toy"
+dataset: "chiral_inf"
 
 wandb:
-  name: "gnn"
-  track_gradients: true
+  name: "chiral_egnn"
+  track_gradients: false
   gradients_every: 125
 
 model:
-  name: "GNN"
+  name: "EGNN"
   n_layers: 4
-  in_node_nf: 3
+  in_node_nf: 0
   out_node_nf: 2
-  in_edge_nf: 0
+  in_edge_nf: 1
   hidden_nf: 64
   encoder_depth: 2
   decoder_depth: 2
   edge_mlp_depth: 2
   node_mlp_depth: 2
   dropout: 0.0
-  norm: false
+  norm: true
   n_particle_types: 1
   particle_embedding: 16
   activation: "silu"
   aggr: "sum"
 
 train:
-  lr: 1e-3
+  lr: 1e-4
   lr_final: 1e-6
   lr_decay_steps: 5e6
   weight_decay: 1e-8
@@ -38,26 +38,27 @@ train:
 
 val:
   batch_size: 200
-  log_steps: 500
+  log_steps: 200
 
 test:
   active: true
-  log_steps: 500
+  log_steps: 200
 
 data:
   subset: true
   subset_samples: [0]
   cluster:
     method: "radius"
-    parameter: 10.0
+    parameter: 0.1
   features:
-    use_distance: false
+    use_distance: true
     use_rel_pos: false
-    use_pos: true
-    use_angle: true
+    use_pos: false
+    use_angle: false
     use_rel_angle: false
-    target_vel: true
-    separate_coords: false
-  boundary_type: [1, 1, 1]
-  box_length: 1.0
+    target_vel: false
+    separate_coords: true
+  boundary_type: [0, 0, 1]
+  box_length: 0.4
   noise_std: 0
+  
