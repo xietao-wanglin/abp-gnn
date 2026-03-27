@@ -305,8 +305,10 @@ class WCA(BaseSimulation):
         dx = x[:, None] - x[None, :]
         dy = y[:, None] - y[None, :]
 
-        dx = dx - self.box_length * np.round(dx / self.box_length)
-        dy = dy - self.box_length * np.round(dy / self.box_length)
+        if self.boundary_type[0] == BoundaryType.PERIODIC:
+            dx = dx - self.box_length * np.round(dx / self.box_length)
+        if self.boundary_type[1] == BoundaryType.PERIODIC:
+            dy = dy - self.box_length * np.round(dy / self.box_length)
         distances = np.sqrt(dx**2 + dy**2)
 
         neighbor_mask = (distances < self.couple_radius) & (distances > 0)

@@ -1,14 +1,15 @@
 seed: 1
+dtype: "float"
 
 dataset: "toy"
 
 wandb:
-  name: "gnn"
+  name: "toy_gns"
   track_gradients: true
   gradients_every: 125
 
 model:
-  name: "GNN"
+  name: "GNS"
   n_layers: 4
   in_node_nf: 3
   out_node_nf: 2
@@ -31,7 +32,7 @@ train:
   lr_decay_steps: 5e6
   weight_decay: 1e-8
   batch_size: 32
-  n_steps: 40000
+  n_steps: 20000
   checkpoint_every: 200
   log_steps: 1
   base_model_path: null
@@ -49,7 +50,7 @@ data:
   subset_samples: [0]
   cluster:
     method: "radius"
-    parameter: 10.0
+    parameter: 100.0
   features:
     use_distance: false
     use_rel_pos: false
@@ -58,6 +59,6 @@ data:
     use_rel_angle: false
     target_vel: true
     separate_coords: false
-  boundary_type: [1, 1, 1]
+  boundary_type: [0, 0, 1]
   box_length: 1.0
   noise_std: 0
