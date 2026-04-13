@@ -1,12 +1,13 @@
 from src.simulation import Toy
+from src.utils import apply_periodic_boundary
 
+import torch
 import numpy as np
 import pandas as pd
 from tqdm import tqdm
 from glob import glob
 import os
 import json
-
 
 def generate_state(n, box_length=1.0):
     rot_rate = np.ones(n) * 0
@@ -28,12 +29,15 @@ def generate_state(n, box_length=1.0):
     )
 
 
-def compute_stats(script_dir):
+def compute_stats(script_dir, box_length=1.0):
     train_glob = sorted(glob(f"{script_dir}/data/simulation_train_*"))
     all_list = np.array([])
     for data in train_glob:
         data_arr = np.load(data)[:2]
-        pos_diff = data_arr[1::2] - data_arr[::2]
+        bcs = apply_periodic_boundary(
+            torch.tensor(data_arr[::2]), dims=[box_length, box_length, 2 * torch.pi]
+        ).numpy()
+        pos_diff = data_arr[1::2] - bcs
         df = np.sqrt(pos_diff[:, 0] ** 2 + pos_diff[:, 1] ** 2).reshape(-1)
         all_list = np.hstack([all_list, df])
     df_describe = pd.DataFrame(all_list)
@@ -57,7 +61,7 @@ if __name__ == "__main__":
 
     for i in tqdm(range(train_init, train_sims + train_init), desc="Training Set"):
         np.random.seed(i)
-        n = np.random.randint(5, 10)
+        n = np.random.randint(10, 20)
         (
             rot_rate,
             rot_couple,
@@ -79,7 +83,7 @@ if __name__ == "__main__":
 
     for i in tqdm(range(test_init, test_sims + test_init), desc="Test Set"):
         np.random.seed(98743 * i + 4500)
-        n = np.random.randint(5, 10)
+        n = np.random.randint(10, 20)
         (
             rot_rate,
             rot_couple,
@@ -101,7 +105,7 @@ if __name__ == "__main__":
 
     for i in tqdm(range(long_test_sims), desc="Long Test Set"):
         np.random.seed(983 * i + 2000)
-        n = 10
+        n = 20
         (
             rot_rate,
             rot_couple,

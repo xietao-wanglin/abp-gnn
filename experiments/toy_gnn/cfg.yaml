@@ -1,7 +1,7 @@
 seed: 1
 dtype: "float"
 
-dataset: "toy"
+dataset: "toy_periodic"
 
 wandb:
   name: "toy_gnn"
@@ -52,13 +52,13 @@ data:
     method: "radius"
     parameter: 100.0
   features:
-    use_distance: true
+    use_distance: false
     use_rel_pos: false
     use_pos: true
     use_angle: true
     use_rel_angle: false
-    target_vel: false
-    separate_coords: true
-  boundary_type: [0, 0, 1]
+    target_vel: true
+    separate_coords: false
+  boundary_type: [1, 1, 1]
   box_length: 1.0
   noise_std: 0
