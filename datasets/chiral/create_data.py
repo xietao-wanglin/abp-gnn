@@ -51,7 +51,7 @@ def compute_stats(script_dir):
     all_list = []
     box_length = 0.4
     for idx, data in enumerate(sim_glob):
-        data_arr = np.load(data)[:3]
+        data_arr = np.load(data)[:2]
         particle_arr = np.load(particle_glob[idx])
         bcs = apply_periodic_boundary(
             torch.tensor(data_arr[::2]), dims=[box_length, box_length, 2 * torch.pi]

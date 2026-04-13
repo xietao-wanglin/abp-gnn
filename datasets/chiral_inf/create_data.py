@@ -42,7 +42,7 @@ def compute_stats(script_dir):
     sim_glob = sorted(glob(f"{script_dir}/data/simulation_train_*"))
     all_list = []
     for idx, data in enumerate(sim_glob):
-        data_arr = np.load(data)[:3]
+        data_arr = np.load(data)[:2]
         pos_diff = data_arr[1::2] - data_arr[::2]
         df = np.sqrt(pos_diff[:, 0] ** 2 + pos_diff[:, 1] ** 2)
 
@@ -54,11 +54,11 @@ def compute_stats(script_dir):
 
 
 if __name__ == "__main__":
-    train_sims = 4000
+    train_sims = 0
     train_init = 0
-    test_sims = 800
+    test_sims = 0
     test_init = 0
-    long_test_sims = 1
+    long_test_sims = 0
     data_folder = "data"
 
     script_dir = os.path.dirname(os.path.abspath(__file__))
