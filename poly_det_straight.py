@@ -116,7 +116,7 @@ if __name__ == "__main__":
     out = run_sim(sim, wrap=False, t_end=t_end, save_dt=save_dt)
     res = np.array(out)
     np.savez(
-        f"poly/data/sim_{index}_{rep}.npz",
+        f"poly/data/sim_straight_{index}_{rep}.npz",
         predictions=res,
         box_length=box_length,
         initial_state=np.array(initial_state),
