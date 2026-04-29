@@ -57,6 +57,7 @@ data:
     use_angle: true
     use_rel_angle: false
     target_vel: true
+    separate_coords: false
   boundary_type: [1, 1, 1]
   box_length: 0.4
   noise_std: 0
