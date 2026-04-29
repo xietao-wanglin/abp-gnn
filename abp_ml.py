@@ -116,9 +116,9 @@ if __name__ == "__main__":
     n = 2048
     n_replications = 20
 
-    experiment = "abp_boundary_cluster"
+    experiment = "abp"
     cfg = OmegaConf.load(f"./experiments/{experiment}/cfg.yaml")
-    model_step = 488_000
+    model_step = 1_000_000
     timesteps = 5010
     record_every = 10
     start_record = 0
