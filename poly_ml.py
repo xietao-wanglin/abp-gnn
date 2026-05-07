@@ -174,7 +174,7 @@ if __name__ == "__main__":
     index = int(args.index)
     phi = phis[index]
 
-    experiment = "poly"
+    experiment = "poly_abp"
     cfg = OmegaConf.load(f"./experiments/{experiment}/cfg.yaml")
     device = "cpu"
     dtype = torch.float
@@ -194,8 +194,8 @@ if __name__ == "__main__":
     )
     model.load_state_dict(data["model_state_dict"])
 
-    n_replications = 5
-    n_particles = 40
+    n_replications = 2
+    n_particles = 2
     model.eval()
     msd_mean = None
     for replic in range(n_replications):
@@ -315,7 +315,7 @@ if __name__ == "__main__":
     sigma = 0.04
     v0 = 3 * sigma
     D_adj = D / (sigma * v0)
-    save_path = "poly_ml/data.csv"
+    save_path = "poly_ml/data_poly_straight.csv"
     with open(save_path, "a", newline="") as f:
         writer = csv.writer(f)
         writer.writerow([phi, D_adj])
