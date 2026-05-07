@@ -174,7 +174,7 @@ if __name__ == "__main__":
     index = int(args.index)
     phi = phis[index]
 
-    experiment = "poly_abp"
+    experiment = "poly"
     cfg = OmegaConf.load(f"./experiments/{experiment}/cfg.yaml")
     device = "cpu"
     dtype = torch.float
@@ -315,7 +315,7 @@ if __name__ == "__main__":
     sigma = 0.04
     v0 = 3 * sigma
     D_adj = D / (sigma * v0)
-    save_path = "poly_ml/data_poly_straight.csv"
+    save_path = "poly_ml/data.csv"
     with open(save_path, "a", newline="") as f:
         writer = csv.writer(f)
         writer.writerow([phi, D_adj])
