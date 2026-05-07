@@ -194,8 +194,8 @@ if __name__ == "__main__":
     )
     model.load_state_dict(data["model_state_dict"])
 
-    n_replications = 2
-    n_particles = 2
+    n_replications = 5
+    n_particles = 40
     model.eval()
     msd_mean = None
     for replic in range(n_replications):
