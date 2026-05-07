@@ -1,6 +1,7 @@
 from src.models.gnn import GNN
 from src.models.gns import GNS, StochasticGNS
 from src.models.egnn import EGNN
+from src.models.segnn import SEGNN
 from src.utils import (
     discrete_simulation,
     ParticleDataset,
@@ -17,6 +18,7 @@ from torch.optim import AdamW
 from torch_geometric.loader import DataLoader
 from torch_geometric.data import Data, Batch
 import wandb
+from e3nn import o3
 
 import numpy as np
 
@@ -148,6 +150,7 @@ class Trainer:
             stats=self.metadata,
             boundary_type=self.cfg.data.boundary_type,
             box_length=self.cfg.data.box_length,
+            segnn = (self.cfg.model.name == "SEGNN"),
             dtype=self.dtype,
             device=self.device,
         )
@@ -169,6 +172,7 @@ class Trainer:
             stats=self.metadata,
             boundary_type=self.cfg.data.boundary_type,
             box_length=self.cfg.data.box_length,
+            segnn = (self.cfg.model.name == "SEGNN"),
             dtype=self.dtype,
             device=self.device,
         )
@@ -283,6 +287,28 @@ class Trainer:
                 .to(dtype=self.dtype)
                 .to(device=self.device)
             )
+        
+        elif self.cfg.model.name == "SEGNN":
+            
+            # 1x0e: dummy scalar or particle type
+            # 1x1o: the vector representation of theta (cos, sin, 0)
+            node_attr_irreps = o3.Irreps("1x0e + 1x1o")
+            input_irreps = o3.Irreps("1x0e") 
+            # Spherical harmonics of relative positions (L=0 and L=1)
+            edge_attr_irreps = o3.Irreps("1x0e + 1x1o") 
+            hidden_irreps = o3.Irreps("32x0e + 32x1o") # e.g., "32x0e + 32x1o"
+            output_irreps = o3.Irreps("1x1o") # velocity dx/dt is a vector
+            
+            model = SEGNN(
+                input_irreps=input_irreps,
+                hidden_irreps=hidden_irreps,
+                output_irreps=output_irreps,
+                edge_attr_irreps=edge_attr_irreps,
+                node_attr_irreps=node_attr_irreps,
+                num_layers=self.cfg.model.n_layers,
+                norm=self.cfg.model.norm,
+                task="node"
+            ).to(device=self.device, dtype=self.dtype)
         else:
             raise ValueError(f"Unknown model type: {self.cfg.model.name}")
         return model
