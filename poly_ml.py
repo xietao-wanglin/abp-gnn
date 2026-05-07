@@ -200,7 +200,7 @@ if __name__ == "__main__":
     msd_mean = None
     for replic in range(n_replications):
         for particle_idx in range(n_particles):
-            data = np.load(f"poly/data/sim_0_{replic}.npz")
+            data = np.load(f"poly/data/sim_{index}_{replic}.npz")
             box_length = data["box_length"].item()
             x = torch.tensor(data["initial_state"], dtype=dtype)
             obstacles = x[:, :400]
