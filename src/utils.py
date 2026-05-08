@@ -191,6 +191,7 @@ def discrete_simulation(
     use_angle=True,
     use_rel_angle=False,
     separate_coords=False,
+    return_theta=False,
     boundary_type=None,
     box_length=1,
     segnn=False,
@@ -331,7 +332,10 @@ def discrete_simulation(
                     else:
                         label = (y - x_bounded).T.to(device).to(dtype=dtype)
                 else:
-                    label = y[:2].T
+                    if return_theta:
+                        label = y[:3].T
+                    else:
+                        label = y[:2].T
 
                 features = []
 

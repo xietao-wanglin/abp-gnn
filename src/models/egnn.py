@@ -171,6 +171,8 @@ class EGNN(nn.Module):
             ]
         )
 
+        self.return_theta = out_node_nf > 2
+
         self.decoder = nn.Linear(hidden_nf, out_node_nf)
         self.to(device)
 
@@ -201,4 +203,6 @@ class EGNN(nn.Module):
                 h, x, theta, edge_index, edge_attr, box_length=box_length, batch=batch
             )
 
+        if self.return_theta:
+            return torch.cat([x, theta], dim=-1)
         return x
