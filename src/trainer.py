@@ -1,10 +1,14 @@
 from src.models.gnn import GNN
-from src.models.gns import GNS
+from src.models.gns import GNS, StochasticGNS
+from src.models.egnn import EGNN
+from src.models.segnn import SEGNN
 from src.utils import (
     discrete_simulation,
     ParticleDataset,
     apply_periodic_boundary,
     compute_graph,
+    ExponentialDecayScheduler,
+    BoundaryType,
 )
 
 
@@ -14,6 +18,7 @@ from torch.optim import AdamW
 from torch_geometric.loader import DataLoader
 from torch_geometric.data import Data, Batch
 import wandb
+from e3nn import o3
 
 import numpy as np
 
@@ -31,7 +36,12 @@ class Trainer:
         else:
             self.seed = self.cfg.seed
         self.set_seed(self.seed)
-        self.dtype = torch.float
+
+        if self.cfg.dtype == "double":
+            self.dtype = torch.double
+            torch.set_default_dtype(self.dtype)
+        else:
+            self.dtype = torch.float
 
         self.device = (
             torch.accelerator.current_accelerator().type
@@ -43,8 +53,11 @@ class Trainer:
 
         os.makedirs(self.checkpoint_dir, exist_ok=True)
         self.load_data(self.cfg.dataset)
-        self.prepare_test(self.cfg.data.subset_samples)
+        if self.cfg.test.active:
+            self.prepare_test(self.cfg.data.subset_samples)
         self.model = self.create_model()
+
+        self.stochastic = getattr(self.model, "stochastic", False)
 
         num_params = sum(p.numel() for p in self.model.parameters())
         wandb.config.update(
@@ -56,7 +69,12 @@ class Trainer:
             lr=self.cfg.train.lr,
             weight_decay=self.cfg.train.weight_decay,
         )
-        self.scheduler = None
+        self.scheduler = ExponentialDecayScheduler(
+            self.optimizer,
+            alpha_start=self.cfg.train.lr,
+            alpha_final=self.cfg.train.lr_final,
+            decay_steps=self.cfg.train.lr_decay_steps,
+        )
         self.criterion = nn.MSELoss(reduction="none")
         self.metric = nn.L1Loss(reduction="none")
 
@@ -78,32 +96,68 @@ class Trainer:
         with open(f"{self.script_dir}/../../datasets/{dataset}/metadata.json") as f:
             self.metadata = json.load(f)
 
-        self.train_simulations = [
-            torch.tensor(np.load(f), device=self.device, dtype=self.dtype)
-            for f in train_glob
-        ]
-        self.val_simulations = [
-            torch.tensor(np.load(f), device=self.device, dtype=self.dtype)
-            for f in val_glob
-        ]
+        self.train_simulations = [np.load(f) for f in train_glob]
+        self.val_simulations = [np.load(f) for f in val_glob]
+
+        particle_type_train_glob = sorted(
+            glob(f"{self.script_dir}/../../datasets/{dataset}/data/particle_train_*")
+        )
+        particle_type_test_glob = sorted(
+            glob(f"{self.script_dir}/../../datasets/{dataset}/data/particle_test_*")
+        )
+        if particle_type_train_glob:
+            self.train_particle_type = [
+                np.load(particle_type) for particle_type in particle_type_train_glob
+            ]
+            self.test_particle_type = [
+                np.load(particle_type) for particle_type in particle_type_test_glob
+            ]
+        else:
+            self.train_particle_type = None
+            self.test_particle_type = None
+
+        features_train_glob = sorted(
+            glob(f"{self.script_dir}/../../datasets/{dataset}/data/features_train_*")
+        )
+        features_test_glob = sorted(
+            glob(f"{self.script_dir}/../../datasets/{dataset}/data/features_test_*")
+        )
+        if features_train_glob:
+            self.train_features = [
+                np.load(features) for features in features_train_glob
+            ]
+            self.test_features = [np.load(features) for features in features_test_glob]
+        else:
+            self.train_features = None
+            self.test_features = None
 
         data_pairs_train = discrete_simulation(
             self.train_simulations,
+            particle_type_list=self.train_particle_type,
+            features_list=self.train_features,
             subset=self.cfg.data.subset,
             subset_samples=self.cfg.data.subset_samples,
             cluster_method=self.cfg.data.cluster.method,
             p=self.cfg.data.cluster.parameter,
+            noise_std=self.cfg.data.noise_std,
             use_distance=self.cfg.data.features.use_distance,
             use_rel_pos=self.cfg.data.features.use_rel_pos,
             use_pos=self.cfg.data.features.use_pos,
+            use_angle=self.cfg.data.features.use_angle,
+            use_rel_angle=self.cfg.data.features.use_rel_angle,
             target_vel=self.cfg.data.features.target_vel,
+            separate_coords=self.cfg.data.features.separate_coords,
             stats=self.metadata,
             boundary_type=self.cfg.data.boundary_type,
+            box_length=self.cfg.data.box_length,
+            segnn = (self.cfg.model.name == "SEGNN"),
             dtype=self.dtype,
             device=self.device,
         )
         data_pairs_val = discrete_simulation(
             self.val_simulations,
+            particle_type_list=self.test_particle_type,
+            features_list=self.test_features,
             subset=self.cfg.data.subset,
             subset_samples=self.cfg.data.subset_samples,
             cluster_method=self.cfg.data.cluster.method,
@@ -111,9 +165,14 @@ class Trainer:
             use_distance=self.cfg.data.features.use_distance,
             use_rel_pos=self.cfg.data.features.use_rel_pos,
             use_pos=self.cfg.data.features.use_pos,
+            use_angle=self.cfg.data.features.use_angle,
+            use_rel_angle=self.cfg.data.features.use_rel_angle,
             target_vel=self.cfg.data.features.target_vel,
+            separate_coords=self.cfg.data.features.separate_coords,
             stats=self.metadata,
             boundary_type=self.cfg.data.boundary_type,
+            box_length=self.cfg.data.box_length,
+            segnn = (self.cfg.model.name == "SEGNN"),
             dtype=self.dtype,
             device=self.device,
         )
@@ -135,14 +194,17 @@ class Trainer:
     def get_activation(self, name):
         if name == "silu":
             return nn.SiLU()
+        elif name == "relu":
+            return nn.ReLU()
+        elif name == "tanh":
+            return nn.Tanh()
         elif name == "linear":
             return nn.Identity()
         else:
             raise ValueError(f"Unknown activation: {name}")
 
     def create_model(self):
-        model_type = self.cfg.model.name
-        if model_type == "GNN":
+        if self.cfg.model.name == "GNN":
             model = (
                 GNN(
                     n_layers=self.cfg.model.n_layers,
@@ -158,11 +220,12 @@ class Trainer:
                     dropout=self.cfg.model.dropout,
                     norm=self.cfg.model.norm,
                     activation=self.get_activation(self.cfg.model.activation),
+                    aggr=self.cfg.model.aggr,
                 )
                 .to(dtype=self.dtype)
                 .to(device=self.device)
             )
-        elif model_type == "GNS":
+        elif self.cfg.model.name == "GNS":
             model = (
                 GNS(
                     n_layers=self.cfg.model.n_layers,
@@ -177,13 +240,77 @@ class Trainer:
                     device=self.device,
                     dropout=self.cfg.model.dropout,
                     norm=self.cfg.model.norm,
+                    num_particle_types=self.cfg.model.n_particle_types,
+                    particle_type_embedding_size=self.cfg.model.particle_embedding,
+                    activation=self.get_activation(self.cfg.model.activation),
+                    aggr=self.cfg.model.aggr,
+                )
+                .to(dtype=self.dtype)
+                .to(device=self.device)
+            )
+        elif self.cfg.model.name == "S-GNS":
+            model = (
+                StochasticGNS(
+                    n_layers=self.cfg.model.n_layers,
+                    in_node_nf=self.cfg.model.in_node_nf,
+                    out_node_nf=self.cfg.model.out_node_nf,
+                    in_edge_nf=self.cfg.model.in_edge_nf,
+                    hidden_nf=self.cfg.model.hidden_nf,
+                    encoder_depth=self.cfg.model.encoder_depth,
+                    decoder_depth=self.cfg.model.decoder_depth,
+                    edge_mlp_depth=self.cfg.model.edge_mlp_depth,
+                    node_mlp_depth=self.cfg.model.node_mlp_depth,
+                    device=self.device,
+                    dropout=self.cfg.model.dropout,
+                    norm=self.cfg.model.norm,
+                    num_particle_types=self.cfg.model.n_particle_types,
+                    particle_type_embedding_size=self.cfg.model.particle_embedding,
+                    activation=self.get_activation(self.cfg.model.activation),
+                    aggr=self.cfg.model.aggr,
+                )
+                .to(dtype=self.dtype)
+                .to(device=self.device)
+            )
+        elif self.cfg.model.name == "EGNN":
+            model = (
+                EGNN(
+                    n_layers=self.cfg.model.n_layers,
+                    in_node_nf=self.cfg.model.in_node_nf,
+                    in_edge_nf=self.cfg.model.in_edge_nf,
+                    hidden_nf=self.cfg.model.hidden_nf,
+                    out_node_nf=self.cfg.model.out_node_nf,
+                    device=self.device,
+                    num_particle_types=self.cfg.model.n_particle_types,
+                    particle_type_embedding_size=self.cfg.model.particle_embedding,
                     activation=self.get_activation(self.cfg.model.activation),
                 )
                 .to(dtype=self.dtype)
                 .to(device=self.device)
             )
+        
+        elif self.cfg.model.name == "SEGNN":
+            
+            # 1x0e: dummy scalar or particle type
+            # 1x1o: the vector representation of theta (cos, sin, 0)
+            node_attr_irreps = o3.Irreps("1x0e + 1x1o")
+            input_irreps = o3.Irreps("1x0e") 
+            # Spherical harmonics of relative positions (L=0 and L=1)
+            edge_attr_irreps = o3.Irreps("1x0e + 1x1o") 
+            hidden_irreps = o3.Irreps("32x0e + 32x1o") # e.g., "32x0e + 32x1o"
+            output_irreps = o3.Irreps("1x1o") # velocity dx/dt is a vector
+            
+            model = SEGNN(
+                input_irreps=input_irreps,
+                hidden_irreps=hidden_irreps,
+                output_irreps=output_irreps,
+                edge_attr_irreps=edge_attr_irreps,
+                node_attr_irreps=node_attr_irreps,
+                num_layers=self.cfg.model.n_layers,
+                norm=self.cfg.model.norm,
+                task="node"
+            ).to(device=self.device, dtype=self.dtype)
         else:
-            raise ValueError(f"Unknown model type: {model_type}")
+            raise ValueError(f"Unknown model type: {self.cfg.model.name}")
         return model
 
     def load_trained_model(self, path):
@@ -214,46 +341,101 @@ class Trainer:
     def train_step(self, batch):
         batch = batch.to(self.device)
         y = batch.y
-        pred = self.model(batch)
-        loss = self.criterion(pred, y)
-        metric = self.metric(pred, y)
+        particle_type = getattr(batch, "particle_type", None)
+        context = self.model(batch, particle_type)
+        if not self.stochastic:
+            pred = context
+            loss = self.criterion(pred, y)
+            metric = self.metric(pred, y)
+        else:
+            loss = self.model.compute_nll(pred, y)
+            metric = loss
         self.optimizer.zero_grad()
         loss.mean().backward()
 
         grad_norm = self.get_grad_norm()
         self.optimizer.step()
+        if self.scheduler is not None:
+            self.scheduler.step()
 
         return loss, metric, grad_norm
 
     def val_step(self, batch):
         batch = batch.to(self.device)
         y = batch.y
-        pred = self.model(batch)
-        loss = self.criterion(pred, y)
-        metric = self.metric(pred, y)
+        particle_type = getattr(batch, "particle_type", None)
+        context = self.model(batch, particle_type)
+        if not self.stochastic:
+            pred = context
+            loss = self.criterion(pred, y)
+            metric = self.metric(pred, y)
+        else:
+            loss = self.model.compute_nll(pred, y)
+            metric = loss
         return loss, metric
 
     def prepare_test(self, timesteps):
         initial_states = []
         ground_truths = []
-        for sim in self.val_simulations:
+        particle_types = []
+        particle_features = []
+        wrap_dims = []
+        for j, type in enumerate(self.cfg.data.boundary_type):
+            if type == BoundaryType.PERIODIC:
+                wrap_dims.append(j)
+        for sim_idx, sim in enumerate(self.val_simulations):
+            if self.test_particle_type is not None:
+                p_type = torch.tensor(
+                    self.test_particle_type[sim_idx],
+                    device=self.device,
+                    dtype=torch.long,
+                )
+            else:
+                p_type = None
+            if self.test_features is not None:
+                p_features = torch.tensor(
+                    self.test_features[sim_idx],
+                    dtype=self.dtype,
+                    device=self.device,
+                )
+            else:
+                p_features = None
             for t in timesteps:
-                x_init = sim[t]
-                x_bounded = apply_periodic_boundary(x_init)
+                x_init = torch.tensor(sim[t], dtype=self.dtype, device=self.device)
+                box_length = self.cfg.data.box_length
+                x_bounded = apply_periodic_boundary(
+                    x_init,
+                    dims=[box_length, box_length, 2 * torch.pi],
+                    wrap_dims=wrap_dims,
+                )
                 initial_states.append(x_bounded)
 
-                gt_trajectory = apply_periodic_boundary(sim[t + 1 : t + 21])
+                traj = torch.tensor(
+                    sim[t + 1 : t + 21], dtype=self.dtype, device=self.device
+                )
+                gt_trajectory = apply_periodic_boundary(
+                    traj,
+                    dims=[box_length, box_length, 2 * torch.pi],
+                    wrap_dims=wrap_dims,
+                )
                 ground_truths.append(gt_trajectory)
+                particle_types.append(p_type)
+                particle_features.append(p_features)
 
         self.initial_states = initial_states
         self.ground_truths = ground_truths
+        self.particle_types = particle_types
+        self.particle_features = particle_features
         self.rollout_length = len(ground_truths[0])
 
         return len(initial_states)
 
     def compute_rollout(self):
         num_trajectories = len(self.initial_states)
-
+        wrap_dims = []
+        for j, type in enumerate(self.cfg.data.boundary_type):
+            if type == BoundaryType.PERIODIC:
+                wrap_dims.append(j)
         predictions = []
         for i in range(num_trajectories):
             N_i = self.initial_states[i].shape[1]
@@ -270,13 +452,16 @@ class Trainer:
         for t in range(self.rollout_length):
             batch_data_list = []
             trajectory_sizes = []
+            particle_types = []
 
             for traj_idx in range(num_trajectories):
                 x = predictions[traj_idx][t].clone()
                 N_i = x.shape[1]
                 trajectory_sizes.append(N_i)
-
-                x_bounded = apply_periodic_boundary(x)
+                box_length = self.cfg.data.box_length
+                x_bounded = apply_periodic_boundary(
+                    x, dims=[box_length, box_length, 2 * torch.pi], wrap_dims=wrap_dims
+                )
 
                 edge_index, edge_attr = compute_graph(
                     x_bounded,
@@ -284,40 +469,116 @@ class Trainer:
                     p=self.cfg.data.cluster.parameter,
                     use_distance=self.cfg.data.features.use_distance,
                     use_rel_pos=self.cfg.data.features.use_rel_pos,
+                    use_rel_theta=self.cfg.data.features.use_rel_angle,
                     boundary_type=self.cfg.data.boundary_type,
+                    box_length=box_length,
                     device=self.device,
                 )
+                features = []
 
-                data = Data(
-                    x=x_bounded[:2].T, edge_index=edge_index, edge_attr=edge_attr
-                )
+                if self.particle_features[traj_idx] is not None:
+                    features.append(self.particle_features[traj_idx].T)
+                if self.cfg.data.features.use_pos:
+                    features.append(x_bounded[:2].T)
+                if self.cfg.data.features.use_angle:
+                    features.append(x_bounded[2].unsqueeze(0).T)
+                if features:
+                    data_input = torch.cat(features, dim=1)
+                else:
+                    batch_size = x_bounded.shape[1]
+                    data_input = torch.ones(
+                        batch_size, 1, device=self.device, dtype=self.dtype
+                    )
+
+                if self.cfg.data.features.separate_coords:
+                    data = Data(
+                        x=x_bounded[:2].T,
+                        theta=x_bounded[2].unsqueeze(0).T,
+                        h=self.particle_features[traj_idx].T
+                        if self.particle_features[traj_idx] is not None
+                        else None,
+                        edge_index=edge_index,
+                        edge_attr=edge_attr,
+                        box_length=box_length,
+                    )
+                else:
+                    data = Data(
+                        x=data_input, edge_index=edge_index, edge_attr=edge_attr
+                    )
                 batch_data_list.append(data)
 
+                if self.particle_types[traj_idx] is not None:
+                    particle_types.append(self.particle_types[traj_idx])
+                else:
+                    particle_types.append(None)
+
             batched_data = Batch.from_data_list(batch_data_list).to(self.device)
+            batched_particle_type = (
+                torch.cat([pt for pt in particle_types if pt is not None])
+                if particle_types[0] is not None
+                else None
+            )
 
             with torch.no_grad():
-                batched_pred = (
-                    self.model(batched_data) * self.metadata["vel_std"]
-                    + self.metadata["vel_mean"]
-                )
+                if batched_particle_type is not None:
+                    forward_pass = self.model(batched_data, batched_particle_type)
+                else:
+                    forward_pass = self.model(batched_data)
+                if self.stochastic:
+                    forward_pass = self.model.sample(forward_pass).squeeze(1)
+                if not self.cfg.data.features.target_vel:
+                    batched_pred = forward_pass
+                else:
+                    if self.metadata["angular_std"] > 0:
+                        batched_vel_pred = (
+                            forward_pass[:, :2] * self.metadata["vel_std"]
+                            + self.metadata["vel_mean"]
+                        )
+                        batched_theta_vel_pred = (
+                            forward_pass[:, 2] * self.metadata["angular_std"]
+                            + self.metadata["angular_mean"]
+                        )
+                        batched_pred = torch.cat(
+                            [batched_vel_pred, batched_theta_vel_pred.unsqueeze(1)],
+                            dim=1,
+                        )
+                    else:
+                        batched_pred = (
+                            forward_pass * self.metadata["vel_std"]
+                            + self.metadata["vel_mean"]
+                        )
 
             start_idx = 0
             for traj_idx in range(num_trajectories):
                 N_i = trajectory_sizes[traj_idx]
                 end_idx = start_idx + N_i
 
-                vel_pred = batched_pred[start_idx:end_idx]
-
-                theta_vel = (
-                    torch.ones(N_i, 1, device=self.device, dtype=self.dtype)
-                    * self.metadata["angular_mean"]
-                )
-                full_vel_pred = torch.cat([vel_pred, theta_vel], dim=-1)
-
+                traj_pred = batched_pred[start_idx:end_idx]
+                if batched_particle_type is not None:
+                    traj_particles = batched_particle_type[start_idx:end_idx]
                 current_state = predictions[traj_idx][t].clone()
+                if not (self.metadata["angular_std"] > 0):
+                    theta_vel = (
+                        torch.ones(N_i, 1, device=self.device, dtype=self.dtype)
+                        * self.metadata["angular_mean"]
+                    )
+                    if not self.cfg.data.features.target_vel:
+                        theta_vel = theta_vel + current_state[2].unsqueeze(0).T
+                    full_vel_pred = torch.cat([traj_pred, theta_vel], dim=-1)
+                else:
+                    full_vel_pred = traj_pred
+                if batched_particle_type is not None:
+                    if self.cfg.data.features.target_vel:
+                        full_vel_pred = full_vel_pred * traj_particles.unsqueeze(0).T
                 next_state = current_state + full_vel_pred.T
-
-                predictions[traj_idx][t + 1] = apply_periodic_boundary(next_state)
+                if not self.cfg.data.features.target_vel:
+                    next_state = full_vel_pred.T
+                box_length = self.cfg.data.box_length
+                predictions[traj_idx][t + 1] = apply_periodic_boundary(
+                    next_state,
+                    dims=[box_length, box_length, 2 * torch.pi],
+                    wrap_dims=wrap_dims,
+                )
 
                 start_idx = end_idx
 
@@ -329,10 +590,10 @@ class Trainer:
         for pred, gt in zip(self.predictions, self.ground_truths):
             pred_rollout = pred[1:]
 
-            mse_1 = torch.mean((pred_rollout[0, :2] - gt[0, :2]) ** 2)
-            mse_5 = torch.mean((pred_rollout[:5, :2] - gt[:5, :2]) ** 2)
-            mse_10 = torch.mean((pred_rollout[:10, :2] - gt[:10, :2]) ** 2)
-            mse_20 = torch.mean((pred_rollout[:20, :2] - gt[:20, :2]) ** 2)
+            mse_1 = torch.mean((pred_rollout[0] - gt[0]) ** 2)
+            mse_5 = torch.mean((pred_rollout[:5] - gt[:5]) ** 2)
+            mse_10 = torch.mean((pred_rollout[:10] - gt[:10]) ** 2)
+            mse_20 = torch.mean((pred_rollout[:20] - gt[:20]) ** 2)
             mse_all.append([mse_1.item(), mse_5.item(), mse_10.item(), mse_20.item()])
 
         mse_all = np.array(mse_all)
@@ -372,6 +633,8 @@ class Trainer:
                     train_logs = self.logs(loss, metric, type="train")
                     wandb.log(train_logs, step=step)
                     wandb.log({"gradients/total": grad_norm}, step=step)
+                    current_lr = self.optimizer.param_groups[0]["lr"]
+                    wandb.log({"train/lr": current_lr}, step=step)
 
                 if (step % self.cfg.val.log_steps) == 0:
                     self.model.eval()
@@ -394,14 +657,11 @@ class Trainer:
                     )
                     self.save_ckpt(step, checkpoint_path)
 
-                if (step % self.cfg.test.log_steps) == 0:
+                if ((step % self.cfg.test.log_steps) == 0) and self.cfg.test.active:
                     self.model.eval()
                     self.compute_rollout()
                     metrics = self.test_metrics()
                     wandb.log(metrics, step=step)
                     self.model.train()
-
-            if self.scheduler is not None:
-                self.scheduler.step()
 
         wandb.finish()

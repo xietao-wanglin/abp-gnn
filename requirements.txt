@@ -7,3 +7,6 @@ matplotlib
 scipy
 wandb
 omegaconf
+pandas
+nflows
+diffrax

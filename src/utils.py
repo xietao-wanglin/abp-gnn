@@ -1,9 +1,135 @@
-from src.simulation import BoundaryType
+from src.simulation import BoundaryType, ParticleType
+
+import math
 import torch
+from torch import nn
+from torch.optim.lr_scheduler import LRScheduler
 from torch_geometric.data import Dataset, Data
+from e3nn import o3
+from src.models.gnn import GNN
+from src.models.gns import GNS, StochasticGNS
+from src.models.egnn import EGNN
+from src.models.segnn import SEGNN
 
-from typing import Optional, List, Tuple, Dict
+from typing import Optional, List
 
+def get_activation(name):
+    if name == "silu":
+        return nn.SiLU()
+    elif name == "relu":
+        return nn.ReLU()
+    elif name == "tanh":
+        return nn.Tanh()
+    elif name == "linear":
+        return nn.Identity()
+    else:
+        raise ValueError(f"Unknown activation: {name}")
+    
+def create_model(cfg, dtype=torch.float, device="cpu"):
+    model_type = cfg.model.name
+    if model_type == "GNN":
+        model = (
+            GNN(
+                n_layers=cfg.model.n_layers,
+                in_node_nf=cfg.model.in_node_nf,
+                out_node_nf=cfg.model.out_node_nf,
+                in_edge_nf=cfg.model.in_edge_nf,
+                hidden_nf=cfg.model.hidden_nf,
+                encoder_depth=cfg.model.encoder_depth,
+                decoder_depth=cfg.model.decoder_depth,
+                edge_mlp_depth=cfg.model.edge_mlp_depth,
+                node_mlp_depth=cfg.model.node_mlp_depth,
+                device=device,
+                dropout=cfg.model.dropout,
+                norm=cfg.model.norm,
+                activation=get_activation(cfg.model.activation),
+            )
+            .to(dtype=dtype)
+            .to(device=device)
+        )
+    elif model_type == "GNS":
+        model = (
+            GNS(
+                n_layers=cfg.model.n_layers,
+                in_node_nf=cfg.model.in_node_nf,
+                out_node_nf=cfg.model.out_node_nf,
+                in_edge_nf=cfg.model.in_edge_nf,
+                hidden_nf=cfg.model.hidden_nf,
+                encoder_depth=cfg.model.encoder_depth,
+                decoder_depth=cfg.model.decoder_depth,
+                edge_mlp_depth=cfg.model.edge_mlp_depth,
+                node_mlp_depth=cfg.model.node_mlp_depth,
+                device=device,
+                dropout=cfg.model.dropout,
+                norm=cfg.model.norm,
+                activation=get_activation(cfg.model.activation),
+                num_particle_types=cfg.model.n_particle_types,
+                particle_type_embedding_size=cfg.model.particle_embedding,
+            )
+            .to(dtype=dtype)
+            .to(device=device)
+        )
+    elif model_type == "S-GNS":
+        model = (
+            StochasticGNS(
+                n_layers=cfg.model.n_layers,
+                in_node_nf=cfg.model.in_node_nf,
+                out_node_nf=cfg.model.out_node_nf,
+                in_edge_nf=cfg.model.in_edge_nf,
+                hidden_nf=cfg.model.hidden_nf,
+                encoder_depth=cfg.model.encoder_depth,
+                decoder_depth=cfg.model.decoder_depth,
+                edge_mlp_depth=cfg.model.edge_mlp_depth,
+                node_mlp_depth=cfg.model.node_mlp_depth,
+                device=device,
+                dropout=cfg.model.dropout,
+                norm=cfg.model.norm,
+                num_particle_types=cfg.model.n_particle_types,
+                particle_type_embedding_size=cfg.model.particle_embedding,
+                activation=get_activation(cfg.model.activation),
+            )
+            .to(dtype=dtype)
+            .to(device=device)
+        )
+    elif model_type == "EGNN":
+        model = (
+            EGNN(
+                n_layers=cfg.model.n_layers,
+                in_node_nf=cfg.model.in_node_nf,
+                out_node_nf=cfg.model.out_node_nf,
+                in_edge_nf=cfg.model.in_edge_nf,
+                hidden_nf=cfg.model.hidden_nf,
+                device=device,
+                num_particle_types=cfg.model.n_particle_types,
+                particle_type_embedding_size=cfg.model.particle_embedding,
+                activation=get_activation(cfg.model.activation),
+            )
+            .to(dtype=dtype)
+            .to(device=device)
+        )
+    elif model_type == "SEGNN":
+        # 1x0e: dummy scalar or particle type
+        # 1x1o: the vector representation of theta (cos, sin, 0)
+        node_attr_irreps = o3.Irreps("1x0e + 1x1o")
+        input_irreps = o3.Irreps("1x0e") 
+        # Spherical harmonics of relative positions (L=0 and L=1)
+        edge_attr_irreps = o3.Irreps("1x0e + 1x1o") 
+        hidden_irreps = o3.Irreps("32x0e + 32x1o") # e.g., "32x0e + 32x1o"
+        output_irreps = o3.Irreps("1x1o") # velocity dx/dt is a vector
+        
+        model = SEGNN(
+            input_irreps=input_irreps,
+            hidden_irreps=hidden_irreps,
+            output_irreps=output_irreps,
+            edge_attr_irreps=edge_attr_irreps,
+            node_attr_irreps=node_attr_irreps,
+            num_layers=cfg.model.n_layers,
+            norm=cfg.model.norm,
+            task="node"
+        ).to(device=device).to(dtype=dtype)
+    else:
+        raise ValueError(f"Unknown model type: {model_type}")
+    return model
 
 def apply_periodic_boundary(
     positions: torch.Tensor,
@@ -49,49 +175,29 @@ def apply_periodic_boundary(
 
 
 def discrete_simulation(
-    simulation_list: List,
-    particle_type_list: Optional[List] = None,
-    subset: Optional[bool] = False,
-    subset_samples: Optional[List] = None,
-    n_samples: Optional[int] = 4,
-    cluster_method: Optional[str] = "radius",
-    p: Optional[int] = 0.1,
-    use_distance: Optional[bool] = False,
-    use_rel_pos: Optional[bool] = False,
-    target_vel: Optional[bool] = True,
-    use_pos: Optional[bool] = False,
-    boundary_type: Optional[Tuple] = None,
-    stats: Optional[Dict] = None,
-    dtype: Optional[torch.dtype] = torch.double,
-    device: Optional[str | torch.device] = "cpu",
-) -> List:
-    """
-    Process multiple simulations for training.
-    Returns list of (input, target) pairs.
-
-    Parameters
-    ----------
-    simulation_list: List
-        List of simulation arrays, each of shape (timesteps, 3, N).
-    subset: bool, optional
-        If True, selects `n_samples` random timesteps instead of all.
-    subset_samples: List, optional
-        If provided, samples to choose from trajectories if `subset=True`, otherwise random, default is None.
-    n_samples: int, optional
-        Number of random samples to pick when `subset=True`.
-    cluster_method: str, optional
-        Method used to create edges in graph, either 'radius' or 'knn', default is 'radius'.
-    p: float or int, optional
-        Parameter of `cluster_method`, default is 0.1.
-    dtype: torch.dtype
-        Data type for conversion, default is torch.float.
-    device: str or torch.device, optional
-        Either 'cpu', 'cuda' or torch.device instance, default is 'cpu'.
-
-    Returns
-    -------
-    data_pairs: List
-    """
+    simulation_list,
+    particle_type_list=None,
+    features_list=None,
+    subset=False,
+    subset_samples=None,
+    n_samples=4,
+    cluster_method="radius",
+    p=0.1,
+    noise_std=0.0,
+    use_distance=False,
+    use_rel_pos=False,
+    target_vel=True,
+    use_pos=False,
+    use_angle=True,
+    use_rel_angle=False,
+    separate_coords=False,
+    boundary_type=None,
+    box_length=1,
+    segnn=False,
+    stats=None,
+    dtype=torch.double,
+    device="cpu",
+):
     if boundary_type is None:
         boundary_type = (
             BoundaryType.PERIODIC,
@@ -108,15 +214,17 @@ def discrete_simulation(
         sim = simulation_list[idx]
         if particle_type_list is not None:
             particle_type = particle_type_list[idx]
-            if not torch.is_tensor(particle_type):
-                particle_type = torch.tensor(
-                    particle_type, dtype=torch.int, device=device
-                )
+            particle_type = torch.tensor(particle_type, dtype=torch.int, device=device)
         else:
             particle_type = None
 
-        if not torch.is_tensor(sim):
-            sim = torch.tensor(sim, dtype=dtype)
+        if features_list is not None:
+            particle_features = features_list[idx]
+            particle_features = torch.tensor(
+                particle_features, dtype=dtype, device=device
+            )
+
+        sim = torch.tensor(sim, dtype=dtype)
 
         num_timesteps = sim.shape[0] - 1
 
@@ -134,153 +242,153 @@ def discrete_simulation(
             x = sim[t]
             y = sim[t + 1]
 
-            x_bounded = apply_periodic_boundary(x, wrap_dims=wrap_dims)
+            if noise_std > 0:
+                noise = torch.randn_like(x) * noise_std
+                noise[2] *= 2 * torch.pi
+                if particle_type is not None:
+                    noise_mask = (
+                        (particle_type == ParticleType.BOUNDARY)
+                        .to(dtype=dtype)
+                        .view(-1, 1)
+                    )
+                    noise = noise * (1 - noise_mask)
+                x_copy = x.clone()
+                x = x_copy + noise
+                y_copy = y.clone()
+                y = y_copy + noise
 
-            edge_index, edge_attr = compute_graph(
+            x_bounded = apply_periodic_boundary(
+                x, dims=[box_length, box_length, 2 * torch.pi], wrap_dims=wrap_dims
+            )
+
+            
+            
+            if segnn:
+                edge_index, edge_attr, rel_pos_3d = compute_graph(
                 x_bounded,
                 method=cluster_method,
                 p=p,
                 use_distance=use_distance,
                 use_rel_pos=use_rel_pos,
+                use_rel_theta=use_rel_angle,
                 boundary_type=boundary_type,
+                box_length=box_length,
+                segnn=segnn,
                 device=device,
             )
-            if target_vel:
-                if stats is not None:
-                    vel = y - x_bounded
-                    vel[:2] = (vel[:2] - stats["vel_mean"]) / stats["vel_std"]
-                    label = vel[:2].T.to(device).to(dtype=dtype)
-                else:
-                    label = (y - x_bounded).T.to(device).to(dtype=dtype)
-            else:
-                label = y[:2].T
+                # 1. Map theta to a steerable vector v_theta = [cos, sin, 0]
+                theta = x_bounded[2]
+                node_attr = torch.stack([
+                    torch.cos(theta), 
+                    torch.sin(theta), 
+                    torch.zeros_like(theta)
+                ], dim=-1) # Shape [N, 3]
 
-            if use_pos:
-                data_input = x_bounded[:2].T.to(device).to(dtype=dtype)
-            else:
-                data_input = x_bounded[2].unsqueeze(0).T.to(device).to(dtype=dtype)
+                dist = torch.norm(rel_pos_3d, dim=-1, keepdim=True)
+                edge_attr = torch.cat([dist, edge_attr], dim=-1)
 
-            data = Data(
-                x=data_input,
-                y=label,
-                edge_index=edge_index.to(device),
-                edge_attr=edge_attr.to(device).to(dtype=dtype),
-                pos=x_bounded[:2].T.to(device).to(dtype=dtype),
-                trajectory=apply_periodic_boundary(sim[t + 1 : t + 21]).permute(
-                    2, 0, 1
-                ),
-                full_x=x_bounded.T.to(device).to(dtype=dtype),
-                particle_type=particle_type,
+                # 2. Format Target (y)
+                # Lift velocity to 3D: [vx, vy, 0]
+                if target_vel:
+                    vel_2d = (y[:2] - x_bounded[:2])
+                    if stats:
+                        vel_2d = (vel_2d - stats["vel_mean"]) / stats["vel_std"]
+                    
+                    # SEGNN expects node targets to be [N, 3] for L=1 vectors
+                    label = torch.cat([vel_2d.T, torch.zeros((vel_2d.shape[1], 1), device=device)], dim=-1)
+                
+                # 3. Dummy scalar node feature (required for Tensor Product)
+                node_features = torch.ones((x_bounded.shape[1], 1), device=device)
+
+                data = Data(
+                    x=node_features,   # 1x0e
+                    y=label,           # 1x1o (the velocity)
+                    edge_index=edge_index,
+                    edge_attr=edge_attr, # SH expansion
+                    node_attr=node_attr, # 1x1o (the orientation)
+                    pos=torch.cat([x_bounded[:2].T, torch.zeros((x_bounded.shape[1], 1), device=device)], dim=-1)
+                )
+            else:
+                edge_index, edge_attr = compute_graph(
+                x_bounded,
+                method=cluster_method,
+                p=p,
+                use_distance=use_distance,
+                use_rel_pos=use_rel_pos,
+                use_rel_theta=use_rel_angle,
+                boundary_type=boundary_type,
+                box_length=box_length,
+                device=device,
             )
+                if target_vel:
+                    if stats is not None:
+                        vel = y - x_bounded
+                        vel[:2] = (vel[:2] - stats["vel_mean"]) / stats["vel_std"]
+                        label = vel[:2].T.to(device).to(dtype=dtype)
+                        if stats["angular_std"] > 0:
+                            vel[2] = (vel[2] - stats["angular_mean"]) / stats["angular_std"]
+                            label = vel.T.to(device).to(dtype=dtype)
+                    else:
+                        label = (y - x_bounded).T.to(device).to(dtype=dtype)
+                else:
+                    label = y[:2].T
+
+                features = []
+
+                if use_pos:
+                    features.append(x_bounded[:2].T)
+                if use_angle:
+                    features.append(x_bounded[2].unsqueeze(0).T)
+                if features_list is not None:
+                    features.append(particle_features.T)
+                if features:
+                    data_input = torch.cat(features, dim=1)
+                else:
+                    batch_size = x_bounded.shape[1]
+                    data_input = torch.ones(batch_size, 1, device=device, dtype=dtype)
+
+                if not (boundary_type[0] == BoundaryType.PERIODIC):
+                    bl = None
+                else:
+                    bl = box_length
+
+                if separate_coords:
+                    data = Data(
+                        x=x_bounded[:2].T,
+                        theta=x_bounded[2].unsqueeze(0).T,
+                        h=particle_features.T if features_list is not None else None,
+                        y=label,
+                        edge_index=edge_index,
+                        edge_attr=edge_attr,
+                        particle_type=particle_type,
+                        box_length=bl,
+                    )
+                else:
+                    data = Data(
+                        x=data_input,
+                        y=label,
+                        edge_index=edge_index,
+                        edge_attr=edge_attr,
+                        particle_type=particle_type,
+                    )
 
             data_pairs.append(data)
 
     return data_pairs
 
 
-def continuous_simulation(
-    simulation_list: List,
-    times_list: List,
-    angle: bool,
-    cluster_method: Optional[str] = "radius",
-    p: Optional[int] = 0.1,
-    use_distance: Optional[bool] = False,
-    dtype: Optional[torch.dtype] = torch.double,
-    device: Optional[str | torch.device] = "cpu",
-) -> List:
-    """
-    Process multiple simulations for training.
-    Returns list of (input, target) pairs instead of concatenated tensors.
-
-    Parameters
-    ----------
-    simulation_list: List
-        List of simulation arrays, each of shape (timesteps, 3, N) where N can vary between simulations.
-    n_samples: int, optional
-        Number of random samples to pick when `subset=True`.
-    cluster_method: str, optional
-        Method used to create edges in graph, either 'radius' or 'knn', default is 'radius'.
-    p: float or int, optional
-        Parameter of `cluster_method`, default is 0.1.
-    dtype : torch.dtype
-        Data type for conversion, default is torch.float.
-    device: str or torch.device, optional
-        Either 'cpu', 'cuda' or torch.device instance, default is 'cpu'.
-
-    Returns
-    -------
-    data_pairs: List
-        [(x1, y1, edge_index1, edge_attr1), (x2, y2, edge_index2, edge_attr2), ...]
-        where each x and y represents one timestep pair from any simulation.
-    """
-    data_pairs = []
-    assert len(simulation_list) == len(times_list), (
-        "Must have equal amounts of simulations and times"
-    )
-
-    for idx in range(len(simulation_list)):
-        sim = simulation_list[idx]
-        times = times_list[idx]
-
-        if not torch.is_tensor(sim):
-            sim = torch.tensor(sim, dtype=dtype, device=device)
-        if not torch.is_tensor(times):
-            times = torch.tensor(times, dtype=dtype, device=device)
-
-        x = sim[0]  # Features
-        # Labels
-        if angle:
-            y = sim[1:]
-        else:
-            y = sim[1:][:, :2, :]
-        t = times[1:]  # Collocation times
-
-        edge_index, edge_attr = compute_graph(
-            x, method=cluster_method, p=p, device=device, use_distance=use_distance
-        )
-        data = Data(
-            x=x.T.to(device),
-            y=y.permute(0, 2, 1).to(device),
-            t=t.to(device),
-            edge_index=edge_index.to(device),
-            edge_attr=edge_attr.to(device),
-        )
-        data_pairs.append(data)
-
-    return data_pairs
-
-
 def compute_graph(
-    x: torch.Tensor,
-    method: str,
-    p: float | int,
-    use_distance: Optional[bool] = False,
-    use_rel_pos: Optional[bool] = False,
-    box_length: Optional[float] = 1,
-    boundary_type: Optional[Tuple] = None,
-    device: Optional[str | torch.device] = "cpu",
-) -> Tuple[torch.Tensor, torch.Tensor]:
-    """
-    Compute graph for a given set of node features.
-
-    Parameters
-    ----------
-    x: torch.Tensor
-        Postions (x, y, theta) of shape (3, N).
-    method: str
-        Either 'radius' for radial graph or 'knn' for knn graph.
-    p: float or int, optional
-        Parameter of 'method'.
-    device: str or torch.device, optional
-        Either 'cpu', 'cuda' or torch.device instance, default is 'cpu'.
-
-    Returns
-    -------
-    edge_index: torch.Tensor
-        Tensor of shape (2, E) containing source and target node indices.
-    edge_attr: torch.Tensor
-        Edge features, shape (E, 1).
-    """
+    x,
+    method,
+    p,
+    use_distance=False,
+    use_rel_pos=False,
+    use_rel_theta=False,
+    segnn=False,
+    box_length=1,
+    boundary_type=None,
+    device="cpu",
+):
     if boundary_type is None:
         boundary_type = (
             BoundaryType.PERIODIC,
@@ -288,7 +396,7 @@ def compute_graph(
             BoundaryType.PERIODIC,
         )
 
-    xy, _theta = x[:-1], x[-1]
+    xy, theta = x[:-1], x[-1]
     xy = xy.transpose(0, 1)
     if method == "radius":
         x_coords = xy[:, 0]
@@ -330,6 +438,8 @@ def compute_graph(
 
     row, col = edge_index
     rel_pos = xy[row] - xy[col]
+    theta = theta.unsqueeze(1)
+    rel_theta = theta[row] - theta[col]
     if boundary_type[0] == BoundaryType.PERIODIC:
         rel_pos[:, 0] = rel_pos[:, 0] - box_length * torch.round(
             rel_pos[:, 0] / box_length
@@ -338,13 +448,27 @@ def compute_graph(
         rel_pos[:, 1] = rel_pos[:, 1] - box_length * torch.round(
             rel_pos[:, 1] / box_length
         )
+    rel_theta = rel_theta % (2 * torch.pi)
     rel_dist = torch.sum(rel_pos**2, dim=-1, keepdim=True)
+    if segnn:
+        # 2. Lift to 3D for SEGNN
+        rel_pos_3d = torch.cat([rel_pos, torch.zeros_like(rel_pos[:, :1])], dim=-1)
+        
+        # 3. Compute Spherical Harmonics (the standard SEGNN edge attribute)
+        # Typically use L=1 for vector directions
+        sh_irreps = o3.Irreps.spherical_harmonics(lmax=1)
+        edge_attr = o3.spherical_harmonics(
+            sh_irreps, rel_pos_3d, normalize=True, normalization='component'
+        )
+        return edge_index, edge_attr, rel_pos_3d
 
     features = []
     if use_distance:
         features.append(rel_dist)
     if use_rel_pos:
         features.append(rel_pos)
+    if use_rel_theta:
+        features.append(rel_theta)
     edge_attr = (
         torch.cat(features, dim=-1)
         if features
@@ -355,15 +479,6 @@ def compute_graph(
 
 
 class ParticleDataset(Dataset):
-    """
-    Dataset for particle simulations.
-
-    Parameters
-    ----------
-    data_pairs: List
-        List of PyG Data objects.
-    """
-
     def __init__(self, data_pairs, transform=None, pre_transform=None):
         super(ParticleDataset, self).__init__(None, transform, pre_transform)
         self.data_pairs = data_pairs
@@ -373,3 +488,24 @@ class ParticleDataset(Dataset):
 
     def get(self, idx):
         return self.data_pairs[idx]
+
+
+class ExponentialDecayScheduler(LRScheduler):
+    def __init__(
+        self,
+        optimizer,
+        alpha_start=1e-4,
+        alpha_final=1e-6,
+        decay_steps=5e6,
+        last_epoch=-1,
+    ):
+        self.alpha_start = alpha_start
+        self.alpha_final = alpha_final
+        self.decay_steps = decay_steps
+        super().__init__(optimizer, last_epoch)
+
+    def get_lr(self):
+        step = self.last_epoch
+        factor = math.pow(0.1, step / self.decay_steps)
+        lr = self.alpha_final + (self.alpha_start - self.alpha_final) * factor
+        return [lr for _ in self.optimizer.param_groups]

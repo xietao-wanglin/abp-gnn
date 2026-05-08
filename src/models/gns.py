@@ -1,8 +1,8 @@
 import torch
 import torch.nn as nn
-from torch_geometric.nn import MessagePassing, LayerNorm
+from torch_geometric.nn import MessagePassing
 
-from src.models.basic import MLP
+from src.models.basic import MLP, ConditionalMAF
 
 
 class GNS_Layer(MessagePassing):
@@ -15,13 +15,13 @@ class GNS_Layer(MessagePassing):
         norm=True,
         edge_mlp_depth=2,
         node_mlp_depth=2,
+        aggr="sum",
     ):
-        super(GNS_Layer, self).__init__(aggr="sum")
+        super(GNS_Layer, self).__init__(aggr=aggr)
         self.hidden_nf = hidden_nf
         self.edge_nf = edge_nf
         self.activation = activation
         self.dropout = nn.Dropout(dropout) if dropout > 0.0 else nn.Identity()
-        self.norm = LayerNorm(hidden_nf) if norm else None
 
         self.edge_mlp = MLP(
             in_dim=2 * hidden_nf + edge_nf,
@@ -31,6 +31,7 @@ class GNS_Layer(MessagePassing):
             activation=activation,
             dropout=dropout,
             out_activation=True,
+            norm=norm,
         )
         self.node_mlp = MLP(
             in_dim=2 * hidden_nf,
@@ -40,6 +41,7 @@ class GNS_Layer(MessagePassing):
             activation=activation,
             dropout=dropout,
             out_activation=True,
+            norm=norm,
         )
 
     def forward(self, x, edge_index, edge_attr, batch=None):
@@ -63,17 +65,10 @@ class GNS_Layer(MessagePassing):
         return edge_attr
 
     def update(self, aggr_out, x):
-        if self.norm is not None:
-            x_norm = self.norm(x)
-        else:
-            x_norm = x
+        node_features = torch.cat([x, aggr_out], dim=-1)
+        x = self.node_mlp(node_features)
 
-        node_features = torch.cat(
-            [x_norm, aggr_out], dim=-1
-        )  # [N, hidden_nf + hidden_nf]
-        x_new = self.node_mlp(node_features)
-
-        return x_new
+        return x
 
 
 class AbsoluteGNS(nn.Module):
@@ -88,6 +83,7 @@ class AbsoluteGNS(nn.Module):
         edge_mlp_depth=2,
         node_mlp_depth=2,
         activation=nn.SiLU(),
+        aggr="sum",
         device="cpu",
         dropout=0.0,
         norm=True,
@@ -128,6 +124,7 @@ class AbsoluteGNS(nn.Module):
                     norm,
                     edge_mlp_depth,
                     node_mlp_depth,
+                    aggr,
                 )
             )
 
@@ -178,6 +175,7 @@ class GNS(nn.Module):
         decoder_depth=2,
         edge_mlp_depth=2,
         node_mlp_depth=2,
+        aggr="sum",
         activation=nn.SiLU(),
         device="cpu",
         dropout=0.0,
@@ -186,6 +184,115 @@ class GNS(nn.Module):
         particle_type_embedding_size=16,
     ):
         super(GNS, self).__init__()
+
+        if num_particle_types > 1:
+            self.particle_embedding = nn.Embedding(
+                num_particle_types, particle_type_embedding_size
+            )
+            node_input_size = in_node_nf + particle_type_embedding_size
+        else:
+            self.particle_embedding = None
+            node_input_size = in_node_nf
+
+        self.node_encoder = MLP(
+            in_dim=node_input_size,
+            out_dim=hidden_nf,
+            hidden_dim=hidden_nf,
+            n_layers=encoder_depth,
+            activation=activation,
+            dropout=dropout,
+            out_activation=True,
+            norm=norm,
+        )
+
+        self.edge_encoder = MLP(
+            in_dim=in_edge_nf,
+            out_dim=hidden_nf,
+            hidden_dim=hidden_nf,
+            n_layers=encoder_depth,
+            activation=activation,
+            dropout=dropout,
+            out_activation=True,
+            norm=norm,
+        )
+
+        self.layers = nn.ModuleList()
+
+        for _ in range(n_layers):
+            self.layers.append(
+                GNS_Layer(
+                    hidden_nf,
+                    hidden_nf,
+                    activation,
+                    dropout,
+                    norm,
+                    edge_mlp_depth,
+                    node_mlp_depth,
+                    aggr,
+                )
+            )
+
+        self.decoder = MLP(
+            in_dim=hidden_nf,
+            out_dim=out_node_nf,
+            hidden_dim=hidden_nf,
+            n_layers=decoder_depth,
+            activation=activation,
+            dropout=dropout,
+            out_activation=False,
+            norm=False,
+        )
+
+        self.to(device)
+
+    def forward(self, data, particle_types=None):
+        x, edge_index, edge_attr, batch = (
+            data.x,
+            data.edge_index,
+            data.edge_attr,
+            data.batch,
+        )
+
+        if self.particle_embedding is not None and particle_types is not None:
+            type_embeddings = self.particle_embedding(particle_types)
+            x = torch.cat([x, type_embeddings], dim=-1)
+
+        x = self.node_encoder(x)
+        edge_attr = self.edge_encoder(edge_attr)
+
+        for layer in self.layers:
+            x_new, edge_attr_new = layer(x, edge_index, edge_attr, batch)
+            x = x + x_new
+            edge_attr = edge_attr + edge_attr_new
+
+        x = self.decoder(x)
+
+        return x
+
+
+class StochasticGNS(nn.Module):
+    def __init__(
+        self,
+        n_layers,
+        in_node_nf,
+        out_node_nf,
+        in_edge_nf,
+        hidden_nf,
+        encoder_depth=2,
+        decoder_depth=2,
+        edge_mlp_depth=2,
+        node_mlp_depth=2,
+        activation=nn.SiLU(),
+        aggr="sum",
+        device="cpu",
+        dropout=0.0,
+        norm=True,
+        num_particle_types=1,
+        particle_type_embedding_size=16,
+    ):
+        super(StochasticGNS, self).__init__()
+
+        self.stochastic = True
 
         if num_particle_types > 1:
             self.particle_embedding = nn.Embedding(
@@ -228,20 +335,27 @@ class GNS(nn.Module):
                     norm,
                     edge_mlp_depth,
                     node_mlp_depth,
+                    aggr,
                 )
             )
 
-        self.decoder = MLP(
-            in_dim=hidden_nf,
-            out_dim=out_node_nf,
+        self.decoder = ConditionalMAF(
+            input_dim=out_node_nf,
+            context_dim=hidden_nf,
             hidden_dim=hidden_nf,
-            n_layers=decoder_depth,
-            activation=activation,
-            dropout=dropout,
-            out_activation=False,
+            n_flows=decoder_depth,
         )
 
         self.to(device)
+
+    def compute_nll(self, x, y_true):
+        return self.decoder(context=x, y=y_true)
+
+    def sample(self, x, n_samples=1):
+        return self.decoder.sample(context=x, n_samples=n_samples)
+
+    def sample_mean(self, x, n_samples=None):
+        return self.decoder.sample_mean(context=x, n_samples=n_samples)
 
     def forward(self, data, particle_types=None):
         x, edge_index, edge_attr, batch = (
@@ -262,7 +376,5 @@ class GNS(nn.Module):
             x_new, edge_attr_new = layer(x, edge_index, edge_attr, batch)
             x = x + x_new
             edge_attr = edge_attr + edge_attr_new
-
-        x = self.decoder(x)
 
         return x
