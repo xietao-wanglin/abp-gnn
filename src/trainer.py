@@ -151,6 +151,7 @@ class Trainer:
             boundary_type=self.cfg.data.boundary_type,
             box_length=self.cfg.data.box_length,
             segnn = (self.cfg.model.name == "SEGNN"),
+            return_theta=(self.cfg.model.out_node_nf > 2),
             dtype=self.dtype,
             device=self.device,
         )
@@ -173,6 +174,7 @@ class Trainer:
             boundary_type=self.cfg.data.boundary_type,
             box_length=self.cfg.data.box_length,
             segnn = (self.cfg.model.name == "SEGNN"),
+            return_theta=(self.cfg.model.out_node_nf > 2),
             dtype=self.dtype,
             device=self.device,
         )

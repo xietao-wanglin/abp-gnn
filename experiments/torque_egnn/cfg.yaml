@@ -1,19 +1,19 @@
 seed: 1
-dtype: float
+dtype: "float"
 
 dataset: "torque_mix"
 
 wandb:
-  name: "torque_mix"
+  name: "torque_egnn"
   track_gradients: false
   gradients_every: 125
 
 model:
-  name: "GNS"
+  name: "EGNN"
   n_layers: 5
-  in_node_nf: 1
+  in_node_nf: 0
   out_node_nf: 3
-  in_edge_nf: 3
+  in_edge_nf: 1
   hidden_nf: 128
   encoder_depth: 2
   decoder_depth: 2
@@ -33,17 +33,17 @@ train:
   weight_decay: 1e-8
   batch_size: 32
   n_steps: 1000000
-  checkpoint_every: 20000
+  checkpoint_every: 2000
   log_steps: 1
   base_model_path: null
 
 val:
   batch_size: 200
-  log_steps: 20000
+  log_steps: 2000
 
 test:
   active: true
-  log_steps: 20000
+  log_steps: 2000
 
 data:
   subset: true
@@ -53,12 +53,12 @@ data:
     parameter: 0.1
   features:
     use_distance: true
-    use_rel_pos: true
+    use_rel_pos: false
     use_pos: false
-    use_angle: true
+    use_angle: false
     use_rel_angle: false
-    separate_coords: false
-    target_vel: true
+    target_vel: false
+    separate_coords: true
   boundary_type: [1, 1, 1]
   box_length: 0.4
   noise_std: 0
