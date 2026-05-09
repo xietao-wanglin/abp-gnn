@@ -86,7 +86,7 @@ if __name__ == "__main__":
         initial_state=initial_state,
         v0=v0,
         rot_rate=1.0,
-        epsilon=1,
+        epsilon=0.1,
         sigma=sigma,
         couple_radius=0.0,
         couple_strength=0.0,
