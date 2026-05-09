@@ -225,7 +225,7 @@ def discrete_simulation(
                 particle_features, dtype=dtype, device=device
             )
 
-        sim = torch.tensor(sim, dtype=dtype)
+        sim = torch.tensor(sim, dtype=dtype, device=device)
 
         num_timesteps = sim.shape[0] - 1
 
