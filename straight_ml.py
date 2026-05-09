@@ -158,11 +158,11 @@ if __name__ == "__main__":
     index = int(args.index)
     phi = phis[index]
 
-    experiment = "abp_boundary"
+    experiment = "straight_egnn"
     cfg = OmegaConf.load(f"./experiments/{experiment}/cfg.yaml")
     device = "cpu"
     dtype = torch.float
-    model_step = 1_000_000
+    model_step = 60_000
     timesteps = 16000
     record_every = 10
     start_record = 0
@@ -220,7 +220,17 @@ if __name__ == "__main__":
             else:
                 batch_size = x_bounded.shape[1]
                 data_input = torch.ones(batch_size, 1, device=device, dtype=dtype)
-            data = Data(x=data_input, edge_index=edge_index, edge_attr=edge_attr)
+            if cfg.data.features.separate_coords:
+                data = Data(
+                    x=x_bounded[:2].T,
+                    theta=x_bounded[2].unsqueeze(0).T,
+                    h=None,
+                    edge_index=edge_index,
+                    edge_attr=edge_attr,
+                    box_length=torch.tensor(box_length).unsqueeze(0),
+                    )
+            else:
+                data = Data(x=data_input, edge_index=edge_index, edge_attr=edge_attr)
             with torch.no_grad():
                 forward_pass = model(data, particles)
                 if stochastic:
@@ -257,6 +267,9 @@ if __name__ == "__main__":
             next_state = current_state + (full_vel_pred * boundary_mask).T
             if not cfg.data.features.target_vel:
                 next_state = full_vel_pred.T
+                if particles is not None:
+                    mask = particles.unsqueeze(0)
+                    next_state = (mask * next_state) + ((1 - mask) * current_state)
             next_state = apply_periodic_boundary(
                 next_state, dims=[box_length, box_length, 2 * torch.pi]
             )
@@ -286,7 +299,7 @@ if __name__ == "__main__":
     sigma = 0.04
     v0 = 3 * sigma
     D_adj = D / (sigma * v0)
-    save_path = "lattice_ml/data_straight.csv"
+    save_path = "lattice_ml/data_straight_egnn.csv"
     with open(save_path, "a", newline="") as f:
         writer = csv.writer(f)
         writer.writerow([phi, D_adj])
