@@ -4,6 +4,7 @@ from torch import nn
 from omegaconf import OmegaConf
 from src.models.gnn import GNN
 from src.models.gns import GNS, StochasticGNS
+from src.models.egnn import EGNN
 from src.utils import (
     apply_periodic_boundary,
     compute_graph,
@@ -87,6 +88,22 @@ def create_model(cfg):
                 device=device,
                 dropout=cfg.model.dropout,
                 norm=cfg.model.norm,
+                num_particle_types=cfg.model.n_particle_types,
+                particle_type_embedding_size=cfg.model.particle_embedding,
+                activation=get_activation(cfg.model.activation),
+            )
+            .to(dtype=dtype)
+            .to(device=device)
+        )
+    elif model_type == "EGNN":
+        model = (
+            EGNN(
+                n_layers=cfg.model.n_layers,
+                in_node_nf=cfg.model.in_node_nf,
+                out_node_nf=cfg.model.out_node_nf,
+                in_edge_nf=cfg.model.in_edge_nf,
+                hidden_nf=cfg.model.hidden_nf,
+                device=device,
                 num_particle_types=cfg.model.n_particle_types,
                 particle_type_embedding_size=cfg.model.particle_embedding,
                 activation=get_activation(cfg.model.activation),
