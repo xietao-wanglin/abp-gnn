@@ -39,7 +39,7 @@ def compute_stats(script_dir):
     particle_glob = sorted(glob(f"{script_dir}/data/particle_train_*"))
     all_list = []
     for idx, data in enumerate(sim_glob):
-        data_arr = np.load(data)[:20]
+        data_arr = np.load(data)[:2]
         particle_arr = np.load(particle_glob[idx])
         bcs = apply_periodic_boundary(torch.tensor(data_arr[::2])).numpy()
         pos_diff = data_arr[1::2] - bcs
@@ -82,8 +82,9 @@ if __name__ == "__main__":
             v0=3 * sigma,
             rot_couple=rot_couple,
             rot_rate=rot_rate,
-            timesteps=21,
+            timesteps=2,
             sigma=sigma,
+            epsilon=0.1,
             particle_type=particle_type,
             initial_state=initial_state,
         )
@@ -111,6 +112,7 @@ if __name__ == "__main__":
             rot_rate=rot_rate,
             timesteps=21,
             sigma=sigma,
+            epsilon=0.1,
             particle_type=particle_type,
             initial_state=initial_state,
         )
@@ -137,6 +139,7 @@ if __name__ == "__main__":
             rot_couple=rot_couple,
             rot_rate=rot_rate,
             sigma=sigma,
+            epsilon=0.1,
             particle_type=particle_type,
             timesteps=400,
             initial_state=initial_state,
