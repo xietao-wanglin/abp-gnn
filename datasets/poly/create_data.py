@@ -55,11 +55,11 @@ def compute_stats(script_dir):
 
 
 if __name__ == "__main__":
-    train_sims = 4000
-    train_init = 0
-    test_sims = 800
+    train_sims = 12000
+    train_init = 4000
+    test_sims = 0
     test_init = 0
-    long_test_sims = 1
+    long_test_sims = 0
     data_folder = "data"
 
     script_dir = os.path.dirname(os.path.abspath(__file__))
