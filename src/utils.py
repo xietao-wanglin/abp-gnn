@@ -319,6 +319,7 @@ def discrete_simulation(
                 use_rel_theta=use_rel_angle,
                 boundary_type=boundary_type,
                 box_length=box_length,
+                segnn=False,
                 device=device,
             )
                 if target_vel:
@@ -339,12 +340,12 @@ def discrete_simulation(
 
                 features = []
 
+                if features_list is not None:
+                    features.append(particle_features.T)
                 if use_pos:
                     features.append(x_bounded[:2].T)
                 if use_angle:
                     features.append(x_bounded[2].unsqueeze(0).T)
-                if features_list is not None:
-                    features.append(particle_features.T)
                 if features:
                     data_input = torch.cat(features, dim=1)
                 else:
