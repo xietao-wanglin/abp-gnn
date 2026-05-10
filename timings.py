@@ -7,7 +7,7 @@ import time
 
 def gns_lattice95():
     experiment = "chiral"
-    cfg = OmegaConf.load(f"../experiments/{experiment}/cfg.yaml")
+    cfg = OmegaConf.load(f"./experiments/{experiment}/cfg.yaml")
     device = "cpu"
     dtype = torch.float
     model_step = 1_000_000
@@ -35,6 +35,7 @@ def gns_lattice95():
             particle_features=None,
             device=device,
             record_every=10,
+            src_root=".",
             dtype=dtype)
         elapsed = time.time() - start
         total_seconds += elapsed
@@ -45,7 +46,7 @@ def gns_lattice95():
 
 def gns_lattice18():
     experiment = "chiral"
-    cfg = OmegaConf.load(f"../experiments/{experiment}/cfg.yaml")
+    cfg = OmegaConf.load(f"./experiments/{experiment}/cfg.yaml")
     device = "cpu"
     dtype = torch.float
     model_step = 1_000_000
@@ -73,6 +74,7 @@ def gns_lattice18():
             particle_features=None,
             device=device,
             record_every=10,
+            src_root=".",
             dtype=dtype)
         elapsed = time.time() - start
         total_seconds += elapsed
@@ -83,7 +85,7 @@ def gns_lattice18():
 
 def egnn_lattice95():
     experiment = "chiral"
-    cfg = OmegaConf.load(f"../experiments/{experiment}/cfg.yaml")
+    cfg = OmegaConf.load(f"./experiments/{experiment}/cfg.yaml")
     device = "cpu"
     dtype = torch.float
     model_step = 66_000
@@ -111,6 +113,7 @@ def egnn_lattice95():
             particle_features=None,
             device=device,
             record_every=10,
+            src_root=".",
             dtype=dtype)
         elapsed = time.time() - start
         total_seconds += elapsed
@@ -121,7 +124,7 @@ def egnn_lattice95():
 
 def egnn_lattice18():
     experiment = "chiral"
-    cfg = OmegaConf.load(f"../experiments/{experiment}/cfg.yaml")
+    cfg = OmegaConf.load(f"./experiments/{experiment}/cfg.yaml")
     device = "cpu"
     dtype = torch.float
     model_step = 66_000
@@ -149,6 +152,7 @@ def egnn_lattice18():
             particle_features=None,
             device=device,
             record_every=10,
+            src_root=".",
             dtype=dtype)
         elapsed = time.time() - start
         total_seconds += elapsed
