@@ -11,11 +11,11 @@ import json
 
 def model_rollout(cfg, experiment_name, model_step, timesteps, initial_state, box_length, particles, particle_features=None, 
                   record_every = 10,
-    start_record = 0, dtype=torch.float, device="cpu"):
-    with open(f"../datasets/{cfg.dataset}/metadata.json") as f:
+    start_record = 0, src_root = "..", dtype=torch.float, device="cpu"):
+    with open(f"{src_root}/datasets/{cfg.dataset}/metadata.json") as f:
         metadata = json.load(f)
     model = create_model(cfg)
-    checkpoint_path = f"../experiments/{experiment_name}/ckp/model_step_{model_step}.pt"
+    checkpoint_path = f"{src_root}/experiments/{experiment_name}/ckp/model_step_{model_step}.pt"
     checkpoint = torch.load(checkpoint_path, map_location=device)
     model.load_state_dict(checkpoint["model_state_dict"])
     stochastic = getattr(model, "stochastic", False)
