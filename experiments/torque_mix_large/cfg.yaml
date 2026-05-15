@@ -1,0 +1,65 @@
+seed: 1
+dtype: float
+
+dataset: "torque_mix"
+
+wandb:
+  name: "torque_mix_large"
+  track_gradients: false
+  gradients_every: 125
+
+model:
+  name: "GNS"
+  n_layers: 10
+  in_node_nf: 1
+  out_node_nf: 3
+  in_edge_nf: 3
+  hidden_nf: 128
+  encoder_depth: 2
+  decoder_depth: 2
+  edge_mlp_depth: 2
+  node_mlp_depth: 2
+  dropout: 0.0
+  norm: true
+  n_particle_types: 2
+  particle_embedding: 16
+  activation: "silu"
+  aggr: "sum"
+
+train:
+  lr: 1e-4
+  lr_final: 1e-6
+  lr_decay_steps: 5e6
+  weight_decay: 1e-8
+  batch_size: 32
+  n_steps: 2000000
+  checkpoint_every: 20000
+  log_steps: 1
+  base_model_path: null
+
+val:
+  batch_size: 200
+  log_steps: 20000
+
+test:
+  active: true
+  log_steps: 20000
+
+data:
+  subset: true
+  subset_samples: [0]
+  cluster:
+    method: "radius"
+    parameter: 0.1
+  features:
+    use_distance: true
+    use_rel_pos: true
+    use_pos: false
+    use_angle: true
+    use_rel_angle: false
+    separate_coords: false
+    target_vel: true
+  boundary_type: [1, 1, 1]
+  box_length: 0.4
+  noise_std: 0
+  

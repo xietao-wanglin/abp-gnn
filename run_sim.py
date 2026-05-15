@@ -5,7 +5,7 @@ import numpy as np
 import math
 import equinox as eqx
 
-jax.config.update("jax_enable_x64", False)
+jax.config.update("jax_enable_x64", True)
 
 
 @eqx.filter_jit
@@ -78,18 +78,17 @@ def generate_state_with_grid_boundary(phi, n_active=10, n_boundary=400, sigma=0.
 
 
 if __name__ == "__main__":
-    n = 200
-    save_dt = 2
-    t_end = 1600
+    save_dt = 1
+    t_end = 501
     sigma = 0.04
 
-    particle_type, box_length, initial_state = generate_state_with_grid_boundary(
-        phi=19, n_active=n, n_boundary=400
+    particle_type, box_length, initial_state = generate_state(
+        n=1024
     )
-    sim = BoundaryWCA(
+    sim = WCA(
         initial_state=initial_state,
-        v0=3 * sigma,
-        rot_rate=1.0,
+        v0=0.1,
+        rot_rate=0.0,
         epsilon=0.1,
         sigma=sigma,
         couple_radius=0.0,
