@@ -1,4 +1,5 @@
 seed: 1
+dtype: float
 
 dataset: "torque_mix"
 
@@ -56,6 +57,7 @@ data:
     use_pos: false
     use_angle: true
     use_rel_angle: false
+    separate_coords: false
     target_vel: true
   boundary_type: [1, 1, 1]
   box_length: 0.4

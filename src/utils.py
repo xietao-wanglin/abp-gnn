@@ -191,6 +191,7 @@ def discrete_simulation(
     use_angle=True,
     use_rel_angle=False,
     separate_coords=False,
+    return_theta=False,
     boundary_type=None,
     box_length=1,
     segnn=False,
@@ -224,7 +225,7 @@ def discrete_simulation(
                 particle_features, dtype=dtype, device=device
             )
 
-        sim = torch.tensor(sim, dtype=dtype)
+        sim = torch.tensor(sim, dtype=dtype, device=device)
 
         num_timesteps = sim.shape[0] - 1
 
@@ -318,6 +319,7 @@ def discrete_simulation(
                 use_rel_theta=use_rel_angle,
                 boundary_type=boundary_type,
                 box_length=box_length,
+                segnn=False,
                 device=device,
             )
                 if target_vel:
@@ -331,16 +333,19 @@ def discrete_simulation(
                     else:
                         label = (y - x_bounded).T.to(device).to(dtype=dtype)
                 else:
-                    label = y[:2].T
+                    if return_theta:
+                        label = y[:3].T
+                    else:
+                        label = y[:2].T
 
                 features = []
 
+                if features_list is not None:
+                    features.append(particle_features.T)
                 if use_pos:
                     features.append(x_bounded[:2].T)
                 if use_angle:
                     features.append(x_bounded[2].unsqueeze(0).T)
-                if features_list is not None:
-                    features.append(particle_features.T)
                 if features:
                     data_input = torch.cat(features, dim=1)
                 else:
