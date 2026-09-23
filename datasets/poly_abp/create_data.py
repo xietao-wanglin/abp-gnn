@@ -55,8 +55,8 @@ def compute_stats(script_dir):
 
 
 if __name__ == "__main__":
-    train_sims = 12000
-    train_init = 4000
+    train_sims = 16000
+    train_init = 16000
     test_sims = 0
     test_init = 0
     long_test_sims = 0

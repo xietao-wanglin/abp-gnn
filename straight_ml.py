@@ -14,6 +14,7 @@ from torch_geometric.data import Data
 import json
 import argparse
 import csv
+import os
 
 
 def get_activation(name):
@@ -165,6 +166,10 @@ def unwrap(traj, box_length):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("index", help="index")
+    parser.add_argument("--experiment", default="straight_egnn")
+    parser.add_argument("--model_step", type=int, default=60_000)
+    parser.add_argument("--n_replications", type=int, default=200)
+    parser.add_argument("--save_dir", default="lattice_ml/sem")
     args = parser.parse_args()
 
     start_phi = 1
@@ -175,11 +180,11 @@ if __name__ == "__main__":
     index = int(args.index)
     phi = phis[index]
 
-    experiment = "straight_egnn"
+    experiment = args.experiment
     cfg = OmegaConf.load(f"./experiments/{experiment}/cfg.yaml")
     device = "cpu"
     dtype = torch.float
-    model_step = 60_000
+    model_step = args.model_step
     timesteps = 16000
     record_every = 10
     start_record = 0
@@ -195,9 +200,16 @@ if __name__ == "__main__":
     )
     model.load_state_dict(data["model_state_dict"])
 
-    n_replications = 200
+    n_replications = args.n_replications
     model.eval()
-    msd_mean = None
+
+    dt = 1
+    time = np.arange(total_records - 1) * dt
+    start = 1200
+    t_fit = time[start:]
+    sigma = 0.04
+    v0 = 3 * sigma
+    D_adj = np.zeros(n_replications)
     for replic in range(n_replications):
         particles, initial_state, box_length = generate_state_with_grid_boundary(
             phi=phi
@@ -301,22 +313,20 @@ if __name__ == "__main__":
         traj_unwrap = unwrap(traj, box_length)
         disp = traj_unwrap - traj_unwrap[0]
         msd = np.sum(disp**2, axis=1)
-        if msd_mean is None:
-            msd_mean = msd
-        else:
-            msd_mean = msd_mean + (msd - msd_mean) / (replic + 1)
+        slope, intercept = np.polyfit(t_fit, msd[start:], 1)
+        D_adj[replic] = slope / 4.0 / (sigma * v0)
 
-    dt = 1
-    time = np.arange(len(msd_mean)) * dt
-    start = 1200
-    t_fit = time[start:]
-    msd_fit = msd_mean[start:]
-    slope, intercept = np.polyfit(t_fit, msd_fit, 1)
-    D = slope / 4.0
-    sigma = 0.04
-    v0 = 3 * sigma
-    D_adj = D / (sigma * v0)
-    save_path = "lattice_ml/data_straight_egnn.csv"
+    # Least squares is linear in the MSD, so the mean of per-replication
+    # slopes equals the slope fitted to the mean MSD.
+    D_adj_mean = D_adj.mean()
+    D_adj_sem = D_adj.std(ddof=1) / np.sqrt(n_replications)
+
+    os.makedirs(f"{args.save_dir}/{experiment}", exist_ok=True)
+    np.save(f"{args.save_dir}/{experiment}/D_adj_{phi}.npy", D_adj)
+    save_path = f"{args.save_dir}/{experiment}.csv"
+    write_header = not os.path.exists(save_path)
     with open(save_path, "a", newline="") as f:
         writer = csv.writer(f)
-        writer.writerow([phi, D_adj])
+        if write_header:
+            writer.writerow(["density", "D_adj", "D_adj_sem", "n_replications"])
+        writer.writerow([phi, D_adj_mean, D_adj_sem, n_replications])
