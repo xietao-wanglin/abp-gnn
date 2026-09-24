@@ -33,6 +33,12 @@ def generate_state(n):
     )
 
 
+def train_seed(i):
+    # Sims 0-3999 were generated with seed i. Later ones are offset so they
+    # cannot reuse a test seed (e.g. simulation_test_0 uses seed 4500).
+    return i if i < 4000 else 10_000_000 + i
+
+
 def compute_stats(script_dir):
     box_length = 0.4
     sim_glob = sorted(glob(f"{script_dir}/data/simulation_train_*"))
@@ -52,8 +58,8 @@ def compute_stats(script_dir):
 
 
 if __name__ == "__main__":
-    train_sims = 0
-    train_init = 0
+    train_sims = 28000
+    train_init = 4000
     test_sims = 0
     test_init = 0
     long_test_sims = 0
@@ -65,8 +71,13 @@ if __name__ == "__main__":
 
     os.makedirs(data_dir, exist_ok=True)
 
+    all_train_seeds = {train_seed(i) for i in range(train_sims + train_init)}
+    all_test_seeds = {98743 * i + 4500 for i in range(800)}
+    assert len(all_train_seeds) == train_sims + train_init
+    assert all_train_seeds.isdisjoint(all_test_seeds)
+
     for i in tqdm(range(train_init, train_sims + train_init), desc="Training Set"):
-        np.random.seed(i)
+        np.random.seed(train_seed(i))
         n = np.random.randint(10, 70)
         (
             rot_rate,
@@ -145,5 +156,9 @@ if __name__ == "__main__":
         "angular_std": 0,
     }
     metadata_path = os.path.join(script_dir, "metadata.json")
-    with open(metadata_path, "w") as f:
-        json.dump(stats, f, indent=4)
+    # Existing checkpoints were trained with the stored stats; do not overwrite.
+    if os.path.exists(metadata_path):
+        print(f"{metadata_path} exists, not overwriting. New stats: {stats}")
+    else:
+        with open(metadata_path, "w") as f:
+            json.dump(stats, f, indent=4)

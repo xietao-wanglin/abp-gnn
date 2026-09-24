@@ -10,7 +10,7 @@ wandb:
 
 model:
   name: "GNS"
-  n_layers: 5
+  n_layers: 10
   in_node_nf: 1
   out_node_nf: 2
   in_edge_nf: 3
