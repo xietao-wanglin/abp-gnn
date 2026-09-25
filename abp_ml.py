@@ -12,6 +12,7 @@ from src.simulation import ParticleType
 from torch_geometric.data import Data
 import json
 import math
+import argparse
 from tqdm import tqdm
 
 device = "cpu"
@@ -113,12 +114,26 @@ def create_model(cfg):
 
 
 if __name__ == "__main__":
-    n = 2048
-    n_replications = 20
+    # Optional slurm array index: index -> (n, replication), e.g.
+    #   sbatch --array=0-99 parallel_inputs.slurm abp_ml.py
+    parser = argparse.ArgumentParser()
+    parser.add_argument("index", nargs="?", type=int, default=None)
+    parser.add_argument("--experiment", default="abp")
+    parser.add_argument("--model_step", type=int, default=1_000_000)
+    args = parser.parse_args()
 
-    experiment = "abp"
+    ns = [128, 256, 512, 1024, 2048]
+    n_replications = 20
+    if args.index is None:
+        n = 2048
+        replications = range(n_replications)
+    else:
+        n = ns[args.index // n_replications]
+        replications = [args.index % n_replications]
+
+    experiment = args.experiment
     cfg = OmegaConf.load(f"./experiments/{experiment}/cfg.yaml")
-    model_step = 1_000_000
+    model_step = args.model_step
     timesteps = 5010
     record_every = 10
     start_record = 0
@@ -135,7 +150,7 @@ if __name__ == "__main__":
     model.load_state_dict(data["model_state_dict"])
 
     model.eval()
-    for replic in tqdm(range(n_replications)):
+    for replic in tqdm(replications):
         particles, box_length, init = generate_state(n=n, rep=replic)
 
         predictions = torch.zeros(size=(total_records, 3, init.shape[1]), dtype=dtype)
